@@ -188,6 +188,18 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Card("Appearance") {
+                Picker("Look", selection: Binding(
+                    get: { model.appearanceMode }, set: { model.appearanceMode = $0; model.saveSettings() })) {
+                    ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 460)
+                Text("Day is light, Night is dark. Auto uses Day from 7am to 7pm and Night after that. The sun/moon button in the menu bar switches instantly.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Card("Tracking") {
                 Toggle("Pause tracking", isOn: $model.trackingPaused)
                 Toggle("Record window and tab titles", isOn: Binding(
@@ -231,7 +243,7 @@ struct SettingsView: View {
                     Button("Send one now") { model.sendReportNow() }
                     Button("Open reports folder") { NSWorkspace.shared.open(VigilPaths.reportsDirectory) }
                 }
-                Text("Reports are also saved as Markdown files, and agents can fetch them over MCP.")
+                Text("Each report is also saved as a private text file (one per day), and agents can fetch them over MCP.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -263,7 +275,8 @@ struct SettingsView: View {
 
             Card("Data") {
                 HStack {
-                    Button("Export last 30 days as CSV") { model.exportCSV(days: 30) }
+                    Button("Export reports as text (.txt)") { model.exportText(days: 30) }
+                    Button("Export activity as CSV") { model.exportCSV(days: 30) }
                     Button("Show database in Finder") { model.revealDataFolder() }
                     Spacer()
                     Button("Delete all activity…", role: .destructive) { confirmDelete = true }

@@ -24,6 +24,11 @@
 
 - **Tracks** which app, window and website you're using, and for how long. Idle time doesn't count.
 - **Scores** your day from 0 to 100, based on productive, neutral and distracting time.
+- **Focus dial**: drag around the dial (or use the arrow keys) to pick how long to block distractions, then press Start. It's in the menu bar and on the Focus page, and counts down while you work.
+- **Sees every tab**: knows which tabs are open in each browser, which are in the background, and which are distracting. Close the distracting ones in one click.
+- **Day and Night mode**: light, dark, match macOS, or switch automatically by time of day. The sun/moon button in the menu bar flips it instantly.
+- **Saves plain-text reports**: each day's report is saved as a private `.txt` file, and you can export reports (`.txt`) or raw activity (`.csv`) any time.
+- **Runs 24/7**: starts at login, restarts itself if it stops, and reacts to app, window and tab switches in about 30 ms while using almost no CPU.
 - **Blocks** distracting sites and apps during focus sessions, on a schedule, or once you've hit a daily limit, like [Freedom](https://freedom.to) or [Cold Turkey](https://getcoldturkey.com).
 - **Reports** your day with a notification each evening and a written summary.
 - **Connects to AI agents** (Claude and other MCP clients), so you can ask *"How productive was I this week?"* or *"Block YouTube for the next hour."*

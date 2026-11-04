@@ -24,10 +24,13 @@ final class BrowserBridge {
     /// Browsers we can see but not read URLs from (no AppleScript tab support).
     static let titleOnly: Set<String> = ["org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "app.zen-browser.zen"]
 
-    struct Tab {
+    struct Tab: Equatable {
         var window: Int
         var index: Int
         var url: String
+        var title: String = ""
+        /// The tab showing in its window (other tabs in that window are in the background).
+        var isActive: Bool = false
     }
 
     private var cache: [String: NSAppleScript] = [:]
@@ -67,35 +70,53 @@ final class BrowserBridge {
         return (url, title)
     }
 
+    /// Every tab in every window. Fetches URLs and titles one window at a time (two Apple Events per
+    /// window, not two per tab), so even a few hundred tabs read in tens of milliseconds.
     func allTabs(bundleID: String) -> [Tab] {
-        guard BrowserBridge.supported[bundleID] != nil else { return [] }
+        guard let flavor = BrowserBridge.supported[bundleID]?.flavor else { return [] }
+        let titleProp = flavor == .safari ? "name" : "title"
+        let activeIndex = flavor == .safari ? "index of current tab of w" : "active tab index of w"
         let source = """
-        set out to ""
+        set out to {}
         tell application id "\(bundleID)"
-            set wi to 0
-            repeat with w in windows
-                set wi to wi + 1
+            repeat with wi from 1 to (count of windows)
+                set w to window wi
                 try
-                    set ti to 0
-                    repeat with t in tabs of w
-                        set ti to ti + 1
-                        try
-                            set u to URL of t
-                            if u is not missing value then
-                                set out to out & (wi as text) & (character id 9) & (ti as text) & (character id 9) & u & (character id 10)
+                    set us to URL of every tab of w
+                    set ns to {}
+                    try
+                        set ns to \(titleProp) of every tab of w
+                    end try
+                    set ai to 0
+                    try
+                        set ai to \(activeIndex)
+                    end try
+                    repeat with i from 1 to count of us
+                        set u to item i of us
+                        if u is not missing value then
+                            set n to ""
+                            if i is less than or equal to (count of ns) then
+                                set n to item i of ns
+                                if n is missing value then set n to ""
                             end if
-                        end try
+                            set a to "0"
+                            if i = ai then set a to "1"
+                            set end of out to (wi as text) & (character id 9) & (i as text) & (character id 9) & a & (character id 9) & u & (character id 9) & n
+                        end if
                     end repeat
                 end try
             end repeat
         end tell
-        return out
+        set AppleScript's text item delimiters to (character id 10)
+        set joined to out as text
+        set AppleScript's text item delimiters to ""
+        return joined
         """
         guard let output = run(source, bundleID: bundleID, cacheable: true) else { return [] }
         return output.split(separator: "\n").compactMap { line in
-            let cols = line.split(separator: "\t", maxSplits: 2).map(String.init)
-            guard cols.count == 3, let w = Int(cols[0]), let t = Int(cols[1]) else { return nil }
-            return Tab(window: w, index: t, url: cols[2])
+            let cols = line.split(separator: "\t", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+            guard cols.count >= 4, let w = Int(cols[0]), let t = Int(cols[1]) else { return nil }
+            return Tab(window: w, index: t, url: cols[3], title: cols.count > 4 ? cols[4] : "", isActive: cols[2] == "1")
         }
     }
 

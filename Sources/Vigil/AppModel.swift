@@ -32,6 +32,33 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     }
 }
 
+/// Day / night look. `auto` uses Day from 07:00 to 19:00 and Night otherwise.
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, day, night, auto
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "Match macOS"
+        case .day: return "Day"
+        case .night: return "Night"
+        case .auto: return "Auto (by time)"
+        }
+    }
+
+    /// nil means follow macOS.
+    func appearanceName(at date: Date = Date()) -> NSAppearance.Name? {
+        switch self {
+        case .system: return nil
+        case .day: return .aqua
+        case .night: return .darkAqua
+        case .auto:
+            let hour = Calendar.current.component(.hour, from: date)
+            return (7..<19).contains(hour) ? .aqua : .darkAqua
+        }
+    }
+}
+
 /// Ticks every two seconds; only the menu-bar countdown observes it.
 final class Clock: ObservableObject {
     @Published var now = Date()
@@ -43,6 +70,7 @@ final class AppModel: ObservableObject {
     let browser: BrowserBridge
     let tracker: ActivityTracker
     let blocker: Blocker
+    let census: TabCensus
     let notifier = Notifier()
 
     // Live state
@@ -53,6 +81,8 @@ final class AppModel: ObservableObject {
     @Published var activeSchedule: BlockSchedule?
     @Published var blockingActive = false
     @Published var blockReason = ""
+    /// Every open tab in every running supported browser (in memory only).
+    @Published var openTabs: [OpenTab] = []
 
     // Configuration
     @Published var blocklist: [BlockItem] = []
@@ -70,6 +100,7 @@ final class AppModel: ObservableObject {
     @Published var retentionDays = 180
     @Published var storeFullURLs = false
     @Published var mcpReadOnly = false
+    @Published var appearanceMode: AppearanceMode = .system { didSet { applyAppearance() } }
     @Published var accessibilityGranted = WindowInfo.isTrusted
 
     // Navigation
@@ -117,6 +148,7 @@ final class AppModel: ObservableObject {
         self.browser = browser
         self.tracker = ActivityTracker(store: store, browser: browser)
         self.blocker = Blocker(store: store, browser: browser)
+        self.census = TabCensus(browser: browser)
         self.today = DaySummary.empty(day: DayKey.today)
         self.readerStore = try? storePath.map { try VigilStore(path: $0) } ?? VigilStore()
         loadSettings()
@@ -145,6 +177,12 @@ final class AppModel: ObservableObject {
         sigterm.resume()
         sigtermSource = sigterm
 
+        applyAppearance()
+        // Saved reports are private: tighten any written by older versions to 0600.
+        let reports = VigilPaths.reportsDirectory
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: reports.path)) ?? [] {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: reports.appendingPathComponent(name).path)
+        }
         notifier.onOpenDashboard = { [weak self] in self?.openDashboard() }
         notifier.setUp()
         blocker.onBlocked = { [weak self] target, reason in
@@ -178,12 +216,12 @@ final class AppModel: ObservableObject {
         refreshSummary(force: true)
     }
 
-    /// Coalesces bursts of Accessibility events into one sample ~80 ms later.
+    /// Coalesces bursts of Accessibility events (a tab switch fires several) into one sample ~30 ms later.
     func requestTick() {
         pendingTick?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.tick() }
         pendingTick = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03, execute: work)
     }
 
     private func tick() {
@@ -202,6 +240,7 @@ final class AppModel: ObservableObject {
             reloadConfig()
             reloadFocusCache()
         }
+        if tickCount % 60 == 0 && appearanceMode == .auto { applyAppearance(now: now) }
         if tickCount % 10 == 0 {
             let trusted = WindowInfo.isTrusted
             if accessibilityGranted != trusted { accessibilityGranted = trusted }
@@ -220,6 +259,7 @@ final class AppModel: ObservableObject {
         if blockReason != blocker.reason { blockReason = blocker.reason }
 
         if now.timeIntervalSince(lastSummaryRefresh) >= 30 { refreshSummary() }
+        if !trackingPaused && !tracker.systemAway { refreshTabs(now: now) }
         checkDailyReport(now: now)
         runMaintenanceIfNeeded(now: now)
     }
@@ -232,6 +272,31 @@ final class AppModel: ObservableObject {
         tracker.flush()
         let removed = store.prune(olderThanDays: retentionDays)
         if removed > 5000 { store.compact() } else { store.maintenance() }
+    }
+
+    // MARK: - Tabs
+
+    /// Re-reads open tabs every 10 s (sooner with `force`). Publishes only when something changed.
+    func refreshTabs(now: Date = Date(), force: Bool = false) {
+        if demoMode {
+            // Screenshots use made-up tabs, never the real browser's.
+            if openTabs.isEmpty { openTabs = OpenTab.samples }
+            return
+        }
+        if census.refresh(categorizer: tracker.categorizer, includeTitles: recordTitles, now: now, force: force) {
+            openTabs = census.tabs
+        }
+    }
+
+    func closeDistractingTabs() {
+        let n = census.closeDistracting(categorizer: tracker.categorizer)
+        lastMessage = n == 0 ? "No distracting tabs to close." : "Closed \(n) distracting tab\(n == 1 ? "" : "s")."
+        refreshTabs(force: true)
+    }
+
+    func closeTab(_ tab: OpenTab) {
+        census.close(tab)
+        refreshTabs(force: true)
     }
 
     private func reloadFocusCache() {
@@ -294,6 +359,7 @@ final class AppModel: ObservableObject {
         retentionDays = store.setting("retention_days", default: 180)
         storeFullURLs = store.setting("store_full_urls", default: 0) == 1
         mcpReadOnly = store.setting("mcp_readonly", default: 0) == 1
+        appearanceMode = AppearanceMode(rawValue: store.setting("appearance") ?? "") ?? .system
         applySettings()
     }
 
@@ -306,6 +372,7 @@ final class AppModel: ObservableObject {
         store.setSetting("retention_days", String(retentionDays))
         store.setSetting("store_full_urls", storeFullURLs ? "1" : "0")
         store.setSetting("mcp_readonly", mcpReadOnly ? "1" : "0")
+        store.setSetting("appearance", appearanceMode.rawValue)
         applySettings()
     }
 
@@ -313,6 +380,26 @@ final class AppModel: ObservableObject {
         tracker.idleThreshold = TimeInterval(max(1, idleMinutes) * 60)
         tracker.recordTitles = recordTitles
         tracker.storeFullURLs = storeFullURLs
+    }
+
+    // MARK: - Day / night
+
+    private var appliedAppearance: NSAppearance.Name?? = .none
+
+    /// Sets the whole app's look (dashboard, menu-bar panel and alerts). Only touches AppKit when it changes.
+    func applyAppearance(now: Date = Date()) {
+        guard !demoMode, let app = NSApp else { return }  // screenshots set their own per-window appearance
+        let name = appearanceMode.appearanceName(at: now)
+        if case .some(let applied) = appliedAppearance, applied == name { return }
+        appliedAppearance = .some(name)
+        app.appearance = name.flatMap { NSAppearance(named: $0) }
+    }
+
+    /// Menu-bar quick switch: flips between Day and Night.
+    func toggleDayNight() {
+        let isDarkNow = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        appearanceMode = isDarkNow ? .day : .night
+        saveSettings()
     }
 
     // MARK: - Always-on background service (LaunchAgent)
@@ -561,8 +648,31 @@ final class AppModel: ObservableObject {
                         q(r.bundleID), r.category.rawValue, q(r.domain), q(r.url), q(r.windowTitle)].joined(separator: ",") + "\n"
             }
         }
+        writePrivate(csv, to: url)
+    }
+
+    /// Exports the daily reports for the last `days` days as one plain-text file.
+    func exportText(days: Int) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "vigil-report-\(DayKey.today).txt"
+        panel.allowedContentTypes = [.plainText]
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var text = ""
+        for i in 0..<days {
+            let day = DayKey.offset(DayKey.today, days: -i)
+            guard i == 0 || store.summary(day: day).activeSeconds >= 60 else { continue }
+            text += store.markdownReport(day: day) + "\n\n"
+        }
+        writePrivate(text, to: url)
+    }
+
+    /// Writes a file only you can read (0600), wherever you chose to save it.
+    private func writePrivate(_ text: String, to url: URL) {
         do {
-            try csv.write(to: url, atomically: true, encoding: .utf8)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            lastMessage = "Saved \(url.lastPathComponent)."
         } catch {
             lastMessage = "Export failed: \(error.localizedDescription)"
         }

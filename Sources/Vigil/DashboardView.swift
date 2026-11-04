@@ -134,6 +134,7 @@ struct TodayView: View {
                     }
                 }
             }
+            if isToday { OpenTabsCard() }
             Card("Insights") {
                 ForEach(model.store.insights(for: s, previous: previous), id: \.self) { line in
                     HStack(alignment: .top, spacing: 8) {
@@ -331,5 +332,74 @@ struct ReportSheet: View {
         .padding(20)
         .frame(width: 640, height: 560)
         .onAppear { text = model.store.markdownReport(day: day) }
+    }
+}
+
+// MARK: - Open tabs
+
+/// Every tab open right now, foreground and background, grouped by browser.
+struct OpenTabsCard: View {
+    @EnvironmentObject var model: AppModel
+    @State private var showAll = false
+    @State private var onlyDistracting = false
+
+    private var tabs: [OpenTab] {
+        let all = model.openTabs.sorted {
+            // Distracting first, then the tab you're on, then background tabs.
+            ($0.category == .distracting ? 0 : 1, $0.isFront ? 0 : 1, $0.browserName, $0.window, $0.index)
+                < ($1.category == .distracting ? 0 : 1, $1.isFront ? 0 : 1, $1.browserName, $1.window, $1.index)
+        }
+        return onlyDistracting ? all.filter { $0.category == .distracting } : all
+    }
+
+    var body: some View {
+        Card("Open tabs", trailing: AnyView(
+            HStack(spacing: 12) {
+                Toggle("Distracting only", isOn: $onlyDistracting).toggleStyle(.checkbox).font(.caption)
+                Button { model.refreshTabs(force: true) } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .help("Re-read tabs now (Vigil also does this every 10 seconds)")
+            }
+        )) {
+            if model.openTabs.isEmpty {
+                EmptyHint(symbol: "square.on.square", title: "No tabs found",
+                          message: "Open Safari, Chrome, Arc, Brave, Edge, Vivaldi or Opera and allow Automation access in Settings.")
+            } else {
+                HStack {
+                    Text(model.openTabs.summaryText).font(.callout).foregroundStyle(.secondary)
+                    Spacer()
+                    if model.openTabs.contains(where: { $0.category == .distracting && !$0.isFront }) {
+                        Button("Close distracting tabs") { model.closeDistractingTabs() }
+                    }
+                }
+                let visible = showAll ? tabs : Array(tabs.prefix(8))
+                ForEach(visible) { tab in row(tab) }
+                if tabs.count > 8 {
+                    Button(showAll ? "Show fewer" : "Show all \(tabs.count)") { showAll.toggle() }.buttonStyle(.link)
+                }
+            }
+        }
+        .onAppear { model.refreshTabs(force: true) }
+    }
+
+    private func row(_ tab: OpenTab) -> some View {
+        HStack(spacing: 10) {
+            Circle().fill(tab.category.color).frame(width: 7, height: 7)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(tab.domain ?? "New tab").font(.system(size: 13, weight: .medium)).lineLimit(1)
+                if !tab.title.isEmpty {
+                    Text(tab.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            Text(tab.isFront ? "Viewing" : tab.isActive ? "Open window" : "Background")
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(tab.isFront ? Theme.productive : .secondary)
+            Text(tab.browserName).font(.caption).foregroundStyle(.secondary).frame(width: 90, alignment: .trailing)
+            Button { model.closeTab(tab) } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless)
+                .help("Close this tab")
+        }
+        .padding(.vertical, 2)
     }
 }

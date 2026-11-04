@@ -225,24 +225,8 @@ struct FocusView: View {
 
     private func activeCard(_ focus: FocusSession) -> some View {
         Card {
-            HStack(alignment: .center, spacing: 24) {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let total = max(1, focus.end.timeIntervalSince(focus.start))
-                    let done = min(1, max(0, context.date.timeIntervalSince(focus.start) / total))
-                    ZStack {
-                        Circle().stroke(Color.primary.opacity(0.08), lineWidth: 12)
-                        Circle().trim(from: 0, to: done)
-                            .stroke(Theme.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                        VStack(spacing: 2) {
-                            Text(DurationText.clock(focus.end.timeIntervalSince(context.date)))
-                                .font(.system(size: 34, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                            Text("remaining").font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(width: 170, height: 170)
-                }
+            HStack(alignment: .center, spacing: 28) {
+                FocusDialRunning(session: focus, size: 220)
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(focus.label ?? "Focus session").font(.title2.bold())
@@ -272,36 +256,35 @@ struct FocusView: View {
 
     private var startCard: some View {
         Card("New session") {
-            HStack(spacing: 8) {
-                ForEach([25, 50, 90, 120], id: \.self) { m in
-                    Button("\(m) min") { minutes = m }
-                        .buttonStyle(.bordered)
-                        .tint(minutes == m ? Theme.accent : nil)
+            HStack(alignment: .center, spacing: 28) {
+                FocusDial(minutes: $minutes, size: 220)
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("What are you working on? (optional)", text: $label)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 320)
+                    HStack(spacing: 6) {
+                        ForEach([25, 50, 90, 120], id: \.self) { m in
+                            Button("\(m)") { withAnimation(.easeOut(duration: 0.2)) { minutes = m } }
+                                .buttonStyle(.bordered)
+                                .tint(minutes == m ? Theme.accent : nil)
+                        }
+                    }
+                    Toggle(isOn: $locked) { Label("Lock session", systemImage: "lock") }
+                        .help("Locked: can't be stopped early, blocklist can't be edited, Vigil can't be quit")
+                    Button {
+                        model.startFocus(minutes: minutes, locked: locked, label: label)
+                        label = ""
+                    } label: {
+                        Label("Start \(minutes) min focus", systemImage: "play.fill").padding(.horizontal, 8)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+                    Text("Blocks \(model.blocklist.filter { $0.kind == .domain }.count) sites and \(model.blocklist.filter { $0.kind == .app }.count) apps from your blocklist.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-                Stepper(value: $minutes, in: 5...480, step: 5) {
-                    Text("\(minutes) minutes").monospacedDigit()
-                }
-                .padding(.leading, 12)
-            }
-            HStack(spacing: 12) {
-                TextField("What are you working on? (optional)", text: $label)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 360)
-                Toggle(isOn: $locked) { Label("Lock session", systemImage: "lock") }
-                    .help("Locked: can't be stopped early, blocklist can't be edited, Vigil can't be quit")
-            }
-            HStack {
-                Button {
-                    model.startFocus(minutes: minutes, locked: locked, label: label)
-                    label = ""
-                } label: {
-                    Label("Start focus", systemImage: "play.fill").padding(.horizontal, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                Text("Blocks \(model.blocklist.filter { $0.kind == .domain }.count) sites and \(model.blocklist.filter { $0.kind == .app }.count) apps from your blocklist.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                Spacer()
             }
         }
     }

@@ -14,6 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/yehawashia/Vigil-Tracker/main/insta
 
 - This clones the source to `~/.vigil/src`, builds it with Swift Package Manager, installs `~/Applications/Vigil.app` and registers the LaunchAgent `dev.vigil.Vigil` so it runs 24/7. Re-running it updates Vigil.
 - If Apple's command line tools are missing, it opens the installer and exits. Ask the user to finish that, then run it again.
+- Daily reports are saved as private text files in `~/Library/Application Support/Vigil/Reports/YYYY-MM-DD.txt`.
 - **Only the user can grant permissions.** After installing, tell them to open the Vigil menu-bar icon → Dashboard → **Settings**, grant **Accessibility**, then click **Test open browsers** and allow the **Automation** prompts. Without these, Vigil tracks apps but not window titles or websites.
 - To uninstall: `~/.vigil/src/uninstall.sh`. Add `--purge` to also delete the data.
 
@@ -93,7 +94,7 @@ printf '%s\n' \
 - `swift build` gives a fast compile check. `./build.sh` builds a signed `build/Vigil.app`. `./build.sh --install` reinstalls it. `./build.sh --screenshots` regenerates `docs/screenshots` from sample data.
 - Layout:
   - `Sources/VigilCore` (SQLite store, categoriser, reports; shared)
-  - `Sources/Vigil` (app: `AppModel` tick loop, `ActivityTracker`, `BrowserBridge`, `Blocker`, SwiftUI views)
+  - `Sources/Vigil` (app: `AppModel` tick loop, `ActivityTracker`, `BrowserBridge`, `Blocker`, `TabCensus` (open/background tabs, memory only), `FocusDial`, SwiftUI views)
   - `Sources/VigilMCP/main.swift` (MCP server)
 - Rules:
   - Keep Swift 5 language mode and macOS 13 as the minimum.

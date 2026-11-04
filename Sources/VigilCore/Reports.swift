@@ -209,12 +209,14 @@ extension VigilStore {
         return md
     }
 
-    /// Writes the report to ~/Library/Application Support/Vigil/Reports/YYYY-MM-DD.md and returns its URL.
+    /// Writes the report to ~/Library/Application Support/Vigil/Reports/YYYY-MM-DD.txt (0600) and returns its URL.
+    /// The text is Markdown, so it reads fine in any text editor and renders nicely where Markdown is supported.
     @discardableResult
     public func saveReport(day: String) -> URL? {
-        let url = VigilPaths.reportsDirectory.appendingPathComponent("\(day).md")
+        let url = VigilPaths.reportsDirectory.appendingPathComponent("\(day).txt")
         do {
             try markdownReport(day: day).write(to: url, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
             return url
         } catch {
             return nil

@@ -5,18 +5,24 @@ import VigilCore
 struct MenuBarView: View {
     @EnvironmentObject var model: AppModel
     @State private var lockNext = false
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("menuDialMinutes") private var dialMinutes = 50
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             currentActivity
             focusSection
+            tabsLine
             topToday
             footer
         }
         .padding(16)
         .frame(width: 340)
-        .onAppear { model.refreshSummary(force: true) }
+        .onAppear {
+            model.refreshSummary(force: true)
+            model.refreshTabs(force: true)
+        }
     }
 
     private var header: some View {
@@ -69,51 +75,63 @@ struct MenuBarView: View {
     private var focusSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let focus = model.focus {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 14) {
+                    FocusDialRunning(session: focus, size: 120)
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(focus.label ?? "Focus session").font(.system(size: 13, weight: .semibold))
                         Text(focus.locked ? "Locked until \(focus.end.formatted(date: .omitted, time: .shortened))"
                                           : "Blocklist active until \(focus.end.formatted(date: .omitted, time: .shortened))")
                             .font(.caption).foregroundStyle(.secondary)
+                        if !focus.locked {
+                            Button("End session early") { model.stopFocus() }
+                                .buttonStyle(.link)
+                                .font(.caption)
+                                .padding(.top, 4)
+                        }
                     }
-                    Spacer()
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(DurationText.clock(focus.end.timeIntervalSince(context.date)))
-                            .font(.system(size: 24, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                    }
-                }
-                MeterBar(value: Date().timeIntervalSince(focus.start) / max(1, focus.end.timeIntervalSince(focus.start)))
-                if !focus.locked {
-                    Button("End session early") { model.stopFocus() }
-                        .buttonStyle(.link)
-                        .font(.caption)
+                    Spacer(minLength: 0)
                 }
             } else {
-                HStack {
-                    Text("Start a focus session").font(.system(size: 13, weight: .semibold))
-                    Spacer()
-                    Toggle(isOn: $lockNext) {
-                        Label("Lock", systemImage: "lock")
-                    }
-                    .toggleStyle(.button)
-                    .controlSize(.small)
-                    .help("Locked sessions can't be stopped or quit until they end")
-                }
-                HStack(spacing: 8) {
-                    ForEach([25, 50, 90], id: \.self) { minutes in
+                HStack(spacing: 14) {
+                    FocusDial(minutes: $dialMinutes, size: 132)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Focus").font(.system(size: 13, weight: .semibold))
+                        Text("Drag the dial, then start. Your blocklist turns on.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Toggle(isOn: $lockNext) { Label("Lock", systemImage: "lock") }
+                            .toggleStyle(.button)
+                            .controlSize(.small)
+                            .help("Locked sessions can't be stopped or quit until they end")
                         Button {
-                            model.startFocus(minutes: minutes, locked: lockNext, label: nil)
+                            model.startFocus(minutes: dialMinutes, locked: lockNext, label: nil)
                         } label: {
-                            Text("\(minutes)m").frame(maxWidth: .infinity)
+                            Label("Start", systemImage: "play.fill").frame(maxWidth: .infinity)
                         }
-                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accent)
                     }
                 }
             }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
+    }
+
+    @ViewBuilder
+    private var tabsLine: some View {
+        if !model.openTabs.isEmpty {
+            HStack(spacing: 8) {
+                Image(systemName: "square.on.square").foregroundStyle(.secondary)
+                Text(model.openTabs.summaryText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer()
+                if model.openTabs.contains(where: { $0.category == .distracting && !$0.isFront }) {
+                    Button("Close distracting") { model.closeDistractingTabs() }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -144,6 +162,12 @@ struct MenuBarView: View {
                 Label("Dashboard", systemImage: "rectangle.grid.2x2")
             }
             Spacer()
+            Button {
+                model.toggleDayNight()
+            } label: {
+                Image(systemName: colorScheme == .dark ? "sun.max" : "moon")
+            }
+            .help(colorScheme == .dark ? "Switch to Day mode" : "Switch to Night mode")
             Button {
                 model.trackingPaused.toggle()
             } label: {
