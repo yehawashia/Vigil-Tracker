@@ -4,7 +4,7 @@
 #   xcodegen --spec project-free.yml && open Vigil.xcodeproj
 name: Vigil
 options:
-  bundleIdPrefix: com.CHANGE-ME.vigil       # must be unique to you, e.g. com.yourname.vigil
+  bundleIdPrefix: com.yehawashia.vigil       # must be unique to you, e.g. com.yourname.vigil
   deploymentTarget: { iOS: "16.0" }
 packages:
   VigilKit: { path: .. }
@@ -22,7 +22,7 @@ targets:
       base:
         PRODUCT_NAME: Vigil
         TARGETED_DEVICE_FAMILY: "1,2"         # iPhone and iPad
-        PRODUCT_BUNDLE_IDENTIFIER: ${bundleIdPrefix}.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.yehawashia.vigil.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5"
         GENERATE_INFOPLIST_FILE: YES
