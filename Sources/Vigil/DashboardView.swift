@@ -20,7 +20,7 @@ struct DashboardView: View {
                     }
                 }
                 Section("Connect") {
-                    ForEach([DashboardSection.agents, .settings]) { s in
+                    ForEach([DashboardSection.devices, .agents, .settings]) { s in
                         Label(s.title, systemImage: s.symbol).tag(s)
                     }
                 }
@@ -35,6 +35,7 @@ struct DashboardView: View {
                     case .today: TodayView()
                     case .trends: TrendsView()
                     case .timetable: TimetableView()
+                    case .devices: DevicesView()
                     case .history: HistoryView()
                     case .focus: FocusView()
                     case .blocking: BlockingView()

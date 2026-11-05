@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Vigil",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v13), .iOS(.v16)],
     targets: [
         // Shared storage, categorisation and reporting. Used by both the app and the MCP server.
         .target(
@@ -11,10 +11,16 @@ let package = Package(
             path: "Sources/VigilCore",
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
-        // The menu-bar app: tracking, blocking, dashboard, daily reports.
+        // Pairing and local-network sync between the Mac host and iPhone/iPad. Shared with the iOS app.
+        .target(
+            name: "VigilSync",
+            dependencies: ["VigilCore"],
+            path: "Sources/VigilSync"
+        ),
+        // The menu-bar app: tracking, blocking, dashboard, daily reports, pairing host.
         .executableTarget(
             name: "Vigil",
-            dependencies: ["VigilCore"],
+            dependencies: ["VigilCore", "VigilSync"],
             path: "Sources/Vigil"
         ),
         // stdio MCP server that agents (Claude Desktop, Claude Code, etc.) launch.
@@ -25,7 +31,7 @@ let package = Package(
         ),
         .testTarget(
             name: "VigilCoreTests",
-            dependencies: ["VigilCore"],
+            dependencies: ["VigilCore", "VigilSync"],
             path: "Tests/VigilCoreTests"
         ),
     ]

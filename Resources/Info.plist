@@ -28,6 +28,13 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Vigil talks only to iPhones and iPads you pair with it, on your local network, encrypted. It never uses the internet.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_vigil._tcp</string>
+        <string>_vigilpair._tcp</string>
+    </array>
     <key>NSAppleEventsUsageDescription</key>
     <string>Vigil reads the address of your current browser tab to track time per website, and redirects blocked sites during focus sessions.</string>
     <key>NSAppSleepDisabled</key>

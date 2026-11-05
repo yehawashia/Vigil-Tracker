@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import VigilCore
+import VigilSync
 
 /// `Vigil --demo-screenshots <dir>` renders the real UI against a throwaway database of
 /// generated sample data and saves PNGs. Nothing from your own activity appears in them.
@@ -170,6 +171,21 @@ enum DemoData {
         try store.proposeTimetableChange(.create, item: TimetableItem(title: "Exam revision", start: saturday.addingTimeInterval(14 * 3600),
                                                                      end: saturday.addingTimeInterval(16 * 3600), kind: .block),
                                          note: "Your statistics exam is on Monday and Saturday afternoon is free.")
+
+        // Two sample paired devices with a little reported usage.
+        let phone = PairedDevice(id: "demo-phone", name: "Sam's iPhone", model: "iPhone 16 Pro", platform: "iOS",
+                                 pairedAt: now.addingTimeInterval(-9 * 86400), lastSeen: now.addingTimeInterval(-40), revoked: false)
+        let pad = PairedDevice(id: "demo-ipad", name: "Sam's iPad", model: "iPad Air", platform: "iPadOS",
+                               pairedAt: now.addingTimeInterval(-3 * 86400), lastSeen: now.addingTimeInterval(-3 * 3600), revoked: false)
+        try store.addDevice(phone)
+        try store.addDevice(pad)
+        let today = DayKey.string(for: now)
+        store.recordDeviceUsage(deviceID: phone.id, [
+            DeviceUsage(day: today, kind: .domain, key: "wikipedia.org", seconds: 1260, precision: 1, category: .productive),
+            DeviceUsage(day: today, kind: .appGroup, key: "Social", seconds: 2700, precision: 900, category: .distracting),
+            DeviceUsage(day: today, kind: .domain, key: "youtube.com", seconds: 840, precision: 1, category: .distracting),
+            DeviceUsage(day: today, kind: .focus, key: "focus", seconds: 1500, precision: 1, category: .productive),
+        ])
     }
 }
 
@@ -189,7 +205,7 @@ final class ScreenshotRunner {
     func run() {
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         let sections: [(DashboardSection, String)] = [
-            (.today, "today"), (.trends, "trends"), (.timetable, "timetable"), (.history, "history"), (.focus, "focus"),
+            (.today, "today"), (.trends, "trends"), (.timetable, "timetable"), (.devices, "devices"), (.history, "history"), (.focus, "focus"),
             (.blocking, "blocking"), (.categories, "categories"), (.agents, "agents"),
         ]
         for (section, name) in sections {
@@ -224,6 +240,12 @@ final class ScreenshotRunner {
         window?.orderOut(nil)
         model.section = section
         model.viewingDay = DayKey.today
+        if section == .devices {
+            // A made-up pairing code (no real secret: demo mode never opens a listener).
+            model.reloadDevices()
+            model.onlineDevices = ["demo-phone"]
+            model.pairing = .open(mode: .qr, qrURL: "vigil://pair?v=1&h=demo&n=Demo%20Mac&k=AAAAAAAAAAAAAAAAAAAAAA&s=demo", expires: Date().addingTimeInterval(97))
+        }
         // Trends is a long page: capture all of it.
         let height: CGFloat = section == .trends ? 1640 : section == .timetable ? 1180 : 820
         let root = DashboardView()

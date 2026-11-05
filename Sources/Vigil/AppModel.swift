@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import VigilCore
+import VigilSync
 
 enum DashboardSection: String, CaseIterable, Identifiable {
-    case today, trends, timetable, history, focus, blocking, categories, agents, settings
+    case today, trends, timetable, history, focus, blocking, devices, categories, agents, settings
     var id: String { rawValue }
 
     var title: String {
@@ -12,6 +13,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .today: return "Today"
         case .trends: return "Trends"
         case .timetable: return "Timetable"
+        case .devices: return "Devices"
         case .history: return "History"
         case .focus: return "Focus"
         case .blocking: return "Blocking"
@@ -26,6 +28,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         case .today: return "sun.max"
         case .trends: return "chart.xyaxis.line"
         case .timetable: return "calendar"
+        case .devices: return "ipad.and.iphone"
         case .history: return "chart.bar.xaxis"
         case .focus: return "timer"
         case .blocking: return "hand.raised"
@@ -114,6 +117,12 @@ final class AppModel: ObservableObject {
     @Published var mcpReadOnly = false
     @Published var appearanceMode: AppearanceMode = .system { didSet { applyAppearance() } }
     @Published var accessibilityGranted = WindowInfo.isTrusted
+
+    // Paired devices
+    private(set) var host: HostServer?
+    @Published var devices: [PairedDevice] = []
+    @Published var onlineDevices: Set<String> = []
+    @Published var pairing: PairingEvent?
 
     // Navigation
     @Published var section: DashboardSection = .today
@@ -224,6 +233,7 @@ final class AppModel: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
 
+        startHost()
         catchUpMissedReport()
         tick()
         refreshSummary(force: true)
@@ -287,6 +297,60 @@ final class AppModel: ObservableObject {
         tracker.flush()
         let removed = store.prune(olderThanDays: retentionDays)
         if removed > 5000 { store.compact() } else { store.maintenance() }
+    }
+
+    // MARK: - Paired devices (local network only; see docs/ARCHITECTURE.md §4)
+
+    var hostID: String {
+        if let id = store.setting("host_id") { return id }
+        let id = Pairing.newID()
+        store.setSetting("host_id", id)
+        return id
+    }
+
+    var hostName: String { demoMode ? "Demo Mac" : (Host.current().localizedName ?? "Mac") }
+
+    private func startHost() {
+        guard !demoMode else { return }
+        do {
+            let server = try HostServer(hostID: hostID, hostName: hostName, storePath: VigilPaths.databaseURL.path,
+                                        keyFile: DeviceKeyFile(url: VigilPaths.supportDirectory.appendingPathComponent("device-keys.json")))
+            server.onPairingEvent = { [weak self] event in
+                guard let self else { return }
+                self.pairing = event
+                if case .paired(let d) = event {
+                    self.notifier.send(title: "\(d.name) is paired", body: "It syncs with this Mac over your local network.", identifier: "paired-\(d.id)")
+                }
+                self.reloadDevices()
+            }
+            server.onDevicesChanged = { [weak self] in self?.reloadDevices() }
+            server.restartSync()
+            host = server
+        } catch {
+            NSLog("[Vigil] Device sync unavailable: \(error)")
+        }
+        reloadDevices()
+    }
+
+    func reloadDevices() {
+        let list = store.devices()
+        if list != devices { devices = list }
+        let online = host?.connectedDevices ?? []
+        if online != onlineDevices { onlineDevices = online }
+    }
+
+    func openPairing(_ mode: PairingMode) { host?.openPairing(mode: mode) }
+    func closePairing() { host?.closePairing(); pairing = nil }
+    func confirmPairing(_ ok: Bool) { host?.confirmPairing(ok) }
+
+    func revokeDevice(_ d: PairedDevice) {
+        host?.revoke(deviceID: d.id)
+        lastMessage = "\(d.name) was removed. It can't connect again unless you pair it."
+        reloadDevices()
+    }
+
+    func deviceUsageToday(_ d: PairedDevice) -> [DeviceUsage] {
+        store.deviceUsage(deviceID: d.id, sinceDay: DayKey.today)
     }
 
     // MARK: - Tabs
