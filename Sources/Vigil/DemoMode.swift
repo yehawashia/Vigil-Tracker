@@ -247,7 +247,7 @@ final class ScreenshotRunner {
             model.pairing = .open(mode: .qr, qrURL: "vigil://pair?v=1&h=demo&n=Demo%20Mac&k=AAAAAAAAAAAAAAAAAAAAAA&s=demo", expires: Date().addingTimeInterval(97))
         }
         // Trends is a long page: capture all of it.
-        let height: CGFloat = section == .trends ? 2140 : section == .timetable ? 1180 : 820
+        let height: CGFloat = section == .trends ? 2140 : section == .timetable ? 1180 : section == .history ? 1560 : 820
         let root = DashboardView()
             .environmentObject(model)
             .frame(width: 1280, height: height)

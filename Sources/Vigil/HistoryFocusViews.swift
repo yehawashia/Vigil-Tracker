@@ -10,6 +10,12 @@ struct HistoryView: View {
     @State private var days: [DaySummary] = []
     @State private var topSites: [UsageItem] = []
     @State private var topApps: [UsageItem] = []
+    @State private var previous: [DaySummary] = []
+    @State private var weekdays: [(name: String, hours: Double)] = []
+    @State private var focusByDay: [String: Double] = [:]
+    @State private var blocksByDay: [String: Int] = [:]
+    @State private var hoverDay: String?
+    @State private var calendarDays: [DaySummary] = []
 
     private struct DayPoint: Identifiable {
         let day: String
@@ -45,11 +51,24 @@ struct HistoryView: View {
                 StatTile(label: "Days tracked", value: "\(active.count)/\(range)")
             }
 
-            Card("Time per day") {
-                Chart(points) { p in
-                    BarMark(x: .value("Day", p.label), y: .value("Hours", p.hours))
-                        .foregroundStyle(by: .value("Category", p.category))
-                        .cornerRadius(3)
+            Card("Time per day", trailing: AnyView(Text(hoverText ?? " ").font(Theme.label(10)).foregroundStyle(Theme.accent))) {
+                Chart {
+                    ForEach(points) { p in
+                        BarMark(x: .value("Day", p.label), y: .value("Hours", p.hours))
+                            .foregroundStyle(by: .value("Category", p.category))
+                            .cornerRadius(3)
+                            .opacity(hoverDay == nil || hoverDay == p.day ? 1 : 0.35)
+                    }
+                }
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle().fill(.clear).contentShape(Rectangle())
+                            .onContinuousHover { phase in
+                                if case .active(let pt) = phase, let label: String = proxy.value(atX: pt.x - geo[proxy.plotAreaFrame].origin.x) {
+                                    hoverDay = days.first { shortLabel($0.day) == label }?.day
+                                } else { hoverDay = nil }
+                            }
+                    }
                 }
                 .chartForegroundStyleScale(["Productive": Theme.productive, "Neutral": Theme.neutral, "Distracting": Theme.distracting])
                 .chartYAxis {
@@ -71,6 +90,15 @@ struct HistoryView: View {
                 }
                 .chartYScale(domain: 0...100)
                 .frame(height: 160)
+            }
+
+            HStack(alignment: .top, spacing: 16) {
+                comparisonCard
+                weekdayCard
+            }
+            HStack(alignment: .top, spacing: 16) {
+                calendarCard
+                focusCard
             }
 
             HStack(alignment: .top, spacing: 16) {
@@ -121,8 +149,142 @@ struct HistoryView: View {
         }
     }
 
+    // MARK: Simple extra charts
+
+    private var hoverText: String? {
+        guard let d = hoverDay, let s = (days + calendarDays).first(where: { $0.day == d }) else { return nil }
+        return "\(longLabel(d).uppercased()) · \(DurationText.short(s.activeSeconds)) · SCORE \(s.score)"
+    }
+
+    private func takeaway(_ text: String) -> some View {
+        Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private struct Compare: Identifiable {
+        let metric: String, period: String, value: Double
+        var id: String { metric + period }
+    }
+
+    private func avg(_ list: [DaySummary], _ f: (DaySummary) -> Double) -> Double {
+        let active = list.filter { $0.activeSeconds > 600 }
+        return active.isEmpty ? 0 : active.map(f).reduce(0, +) / Double(active.count)
+    }
+
+    private var comparisonCard: some View {
+        let rows: [(String, (DaySummary) -> Double)] = [("Productive", { $0.productiveSeconds / 3600 }),
+                                                       ("Distracting", { $0.distractingSeconds / 3600 })]
+        let data = rows.flatMap { name, f in
+            [Compare(metric: name, period: "Before", value: avg(previous, f)), Compare(metric: name, period: "Now", value: avg(days, f))]
+        }
+        let dP = avg(days, { $0.productiveSeconds }) - avg(previous, { $0.productiveSeconds })
+        let dD = avg(days, { $0.distractingSeconds }) - avg(previous, { $0.distractingSeconds })
+        func change(_ v: Double) -> String { "\(v >= 0 ? "up" : "down") \(DurationText.short(abs(v)))" }
+        return Card("Last \(range) days vs the \(range) before") {
+            takeaway(previous.contains { $0.activeSeconds > 600 }
+                     ? "Per day, productive time is \(change(dP)) and distracting time is \(change(dD))."
+                     : "Keep tracking: there's nothing from the period before to compare with yet.")
+            Chart(data) { c in
+                BarMark(x: .value("Hours", c.value), y: .value("Metric", c.metric))
+                    .position(by: .value("Period", c.period))
+                    .foregroundStyle(by: .value("Period", c.period))
+                    .annotation(position: .trailing) {
+                        Text(DurationText.short(c.value * 3600)).font(Theme.label(9)).foregroundStyle(.secondary)
+                    }
+            }
+            .chartForegroundStyleScale(["Before": Theme.neutral.opacity(0.5), "Now": Theme.accent])
+            .chartXAxis(.hidden)
+            .frame(height: 150)
+        }
+    }
+
+    private var weekdayCard: some View {
+        let best = weekdays.max { $0.hours < $1.hours }
+        return Card("Your best days of the week") {
+            takeaway(best.map { $0.hours > 0 ? "You get the most done on \($0.name)s (average over 8 weeks)." : "Not enough data yet." } ?? "Not enough data yet.")
+            Chart(weekdays, id: \.name) { w in
+                BarMark(x: .value("Day", String(w.name.prefix(3))), y: .value("Hours", w.hours))
+                    .foregroundStyle(w.name == best?.name ? Theme.accent : Theme.ink.opacity(0.35))
+                    .cornerRadius(3)
+                    .annotation(position: .top) {
+                        Text(String(format: "%.1fh", w.hours)).font(Theme.label(9)).foregroundStyle(.secondary)
+                    }
+            }
+            .chartYAxis(.hidden)
+            .frame(height: 150)
+        }
+    }
+
+    private var calendarCard: some View {
+        let cal = Calendar.current
+        let shown = calendarDays
+        let best = shown.filter { $0.activeSeconds > 600 && $0.day < DayKey.today }.max { $0.score < $1.score }
+        return Card("Calendar", trailing: AnyView(Text(hoverText ?? "darker = better day").font(Theme.label(9.5)).foregroundStyle(hoverText == nil ? Color.secondary : Theme.accent))) {
+            takeaway(best.map { "Your best day was \(longLabel($0.day)), scoring \($0.score)." } ?? "Days you track appear here.")
+            let firstWeekday = shown.first.flatMap { DayKey.date(from: $0.day) }.map { (cal.component(.weekday, from: $0) - cal.firstWeekday + 7) % 7 } ?? 0
+            let cells: [DaySummary?] = Array(repeating: nil, count: firstWeekday) + shown.map { Optional($0) }
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(22), spacing: 5), count: 7), alignment: .leading, spacing: 5) {
+                ForEach(0..<7, id: \.self) { i in
+                    Text(cal.veryShortWeekdaySymbols[(i + cal.firstWeekday - 1) % 7]).font(Theme.label(9)).foregroundStyle(.secondary)
+                }
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, d in
+                    if let d {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(d.activeSeconds > 600 ? Theme.productive.opacity(0.15 + 0.85 * Double(d.score) / 100) : Theme.hairline)
+                            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(d.day == hoverDay ? Theme.accent : .clear, lineWidth: 1.5))
+                            .frame(width: 22, height: 22)
+                            .onHover { hoverDay = $0 ? d.day : nil }
+                            .onTapGesture { model.viewingDay = d.day; model.section = .today }
+                    } else {
+                        Color.clear.frame(width: 22, height: 22)
+                    }
+                }
+            }
+        }
+    }
+
+    private var focusCard: some View {
+        let totalFocus = focusByDay.values.reduce(0, +)
+        let totalBlocks = blocksByDay.values.reduce(0, +)
+        return Card("Focus and blocking") {
+            takeaway("\(DurationText.short(totalFocus * 60)) in focus sessions and \(totalBlocks) distractions blocked in the last \(range) days.")
+            Chart {
+                ForEach(days, id: \.day) { d in
+                    BarMark(x: .value("Day", shortLabel(d.day)), y: .value("Minutes", focusByDay[d.day] ?? 0))
+                        .foregroundStyle(Theme.productive).cornerRadius(2)
+                    LineMark(x: .value("Day", shortLabel(d.day)), y: .value("Minutes", Double(blocksByDay[d.day] ?? 0) * 5))
+                        .foregroundStyle(Theme.distracting).interpolationMethod(.monotone)
+                        .symbol(.circle).symbolSize(16)
+                }
+            }
+            .chartYAxis(.hidden)
+            .frame(height: 130)
+            HStack(spacing: 14) {
+                Label("Focus minutes", systemImage: "square.fill").foregroundStyle(Theme.productive)
+                Label("Blocked attempts", systemImage: "circle.fill").foregroundStyle(Theme.distracting)
+            }
+            .font(Theme.label(9))
+        }
+    }
+
     private func load() {
         days = model.store.history(days: range)
+        previous = model.store.history(days: range, endingOn: DayKey.offset(DayKey.today, days: -range))
+        calendarDays = range >= 35 ? days : model.store.history(days: 35)
+        let eightWeeks = model.store.history(days: 56).filter { $0.activeSeconds > 600 }
+        let symbols = Calendar.current.weekdaySymbols
+        let order = (0..<7).map { (Calendar.current.firstWeekday - 1 + $0) % 7 }
+        weekdays = order.map { i in
+            let matching = eightWeeks.filter { DayKey.date(from: $0.day).map { Calendar.current.component(.weekday, from: $0) - 1 } == i }
+            let h = matching.isEmpty ? 0 : matching.map(\.productiveSeconds).reduce(0, +) / Double(matching.count) / 3600
+            return (symbols[i], h)
+        }
+        let since = DayKey.offset(DayKey.today, days: -(range - 1))
+        var f: [String: Double] = [:]
+        for s in model.store.focusSessions(sinceDay: since) {
+            f[DayKey.string(for: s.start), default: 0] += max(0, min(s.effectiveEnd, Date()).timeIntervalSince(s.start)) / 60
+        }
+        focusByDay = f
+        blocksByDay = Dictionary(uniqueKeysWithValues: days.map { ($0.day, model.store.blockCount(day: $0.day)) })
         let from = DayKey.offset(DayKey.today, days: -(range - 1))
         topSites = model.store.usage(fromDay: from, toDay: DayKey.today, groupBy: .domain, limit: 10)
         topApps = model.store.usage(fromDay: from, toDay: DayKey.today, groupBy: .app, limit: 10)
