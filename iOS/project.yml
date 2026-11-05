@@ -72,7 +72,12 @@ targets:
     platform: iOS
     sources:
       - path: SafariExtension/SafariWebExtensionHandler.swift
+      # Web files go flat into the .appex (like Apple's template); a top-level "Resources" folder
+      # would make iOS look for Info.plist inside it. Only _locales keeps its folder structure.
       - path: SafariExtension/Resources
+        buildPhase: resources
+        excludes: ["_locales/**"]
+      - path: SafariExtension/Resources/_locales
         type: folder
         buildPhase: resources
     settings:
