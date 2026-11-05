@@ -3,13 +3,63 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VigilCore
 
+/// Two looks, chosen by Day/Night mode (see docs/ARCHITECTURE.md §7):
+/// Day = warm paper, black ink, one signal-orange accent. Night = deep plum grid, amber and coral light.
 enum Theme {
-    static let accent = Color(red: 0.25, green: 0.71, blue: 0.55)
-    static let productive = Color(red: 0.25, green: 0.71, blue: 0.55)
-    static let neutral = Color(red: 0.52, green: 0.58, blue: 0.68)
-    static let distracting = Color(red: 0.93, green: 0.45, blue: 0.38)
-    static let cardBackground = Color(nsColor: .controlBackgroundColor)
-    static let hairline = Color.primary.opacity(0.08)
+    /// A colour that resolves per appearance, so every view follows Day/Night switches instantly.
+    static func dynamic(day: UInt32, night: UInt32, nightAlpha: CGFloat = 1, dayAlpha: CGFloat = 1) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(hex: dark ? night : day, alpha: dark ? nightAlpha : dayAlpha)
+        })
+    }
+
+    static let paper = dynamic(day: 0xEEECE8, night: 0x1E1620)
+    static let cardBackground = dynamic(day: 0xF7F6F3, night: 0x281E2B)
+    static let ink = dynamic(day: 0x161616, night: 0xE6DCEF)
+    static let grid = dynamic(day: 0x161616, night: 0xB49CC8, nightAlpha: 0.07, dayAlpha: 0.06)
+    static let hairline = dynamic(day: 0x161616, night: 0xC9B8D9, nightAlpha: 0.12, dayAlpha: 0.09)
+
+    static let accent = dynamic(day: 0xF26B2A, night: 0xF2B166)
+    static let productive = dynamic(day: 0x1D1D1D, night: 0xF2B166)
+    static let neutral = dynamic(day: 0xA29D95, night: 0x8C7A9E)
+    static let distracting = dynamic(day: 0xF26B2A, night: 0xE8735A)
+    /// Secondary chart series (e.g. "last week", forecast bands).
+    static let series2 = dynamic(day: 0x8A867F, night: 0xB9A6CC)
+
+    /// Small technical labels: monospaced, tracked, upper-case.
+    static func label(_ size: CGFloat = 10.5) -> Font { .system(size: size, weight: .medium, design: .monospaced) }
+}
+
+extension NSColor {
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                  blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+    }
+}
+
+/// Paper in Day mode; a plum field with a faint measuring grid in Night mode.
+struct PaperBackground: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            Theme.paper
+            if scheme == .dark {
+                Canvas { ctx, size in
+                    var path = Path()
+                    let step: CGFloat = 32
+                    var x: CGFloat = 0
+                    while x <= size.width { path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: size.height)); x += step }
+                    var y: CGFloat = 0
+                    while y <= size.height { path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y)); y += step }
+                    ctx.stroke(path, with: .color(Theme.grid), lineWidth: 0.5)
+                }
+                .drawingGroup()
+            }
+        }
+        .ignoresSafeArea()
+    }
 }
 
 extension ActivityCategory {
@@ -47,8 +97,8 @@ struct Card<Content: View>: View {
                 HStack {
                     if let title {
                         Text(title.uppercased())
-                            .font(.system(size: 11, weight: .semibold))
-                            .tracking(0.8)
+                            .font(Theme.label(11))
+                            .tracking(1.2)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -73,8 +123,8 @@ struct StatTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label.uppercased())
-                .font(.system(size: 10.5, weight: .semibold))
-                .tracking(0.7)
+                .font(Theme.label(10.5))
+                .tracking(1)
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.system(size: 24, weight: .semibold, design: .rounded))

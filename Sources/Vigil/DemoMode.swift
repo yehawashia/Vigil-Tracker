@@ -96,7 +96,7 @@ enum DemoData {
         let nowMinute = cal.component(.hour, from: now) * 60 + cal.component(.minute, from: now)
 
         try store.db.transaction {
-            for dayOffset in 0..<14 {
+            for dayOffset in 0..<60 {
                 guard let day = cal.date(byAdding: .day, value: -dayOffset, to: cal.startOfDay(for: now)) else { continue }
                 var rng = LCG(state: UInt64(1000 + dayOffset * 7919))
                 let weekend = cal.isDateInWeekend(day)
@@ -169,7 +169,7 @@ final class ScreenshotRunner {
     func run() {
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         let sections: [(DashboardSection, String)] = [
-            (.today, "today"), (.history, "history"), (.focus, "focus"),
+            (.today, "today"), (.trends, "trends"), (.history, "history"), (.focus, "focus"),
             (.blocking, "blocking"), (.categories, "categories"), (.agents, "agents"),
         ]
         for (section, name) in sections {
@@ -178,6 +178,8 @@ final class ScreenshotRunner {
         }
         steps.append { [unowned self] done in self.showDashboard(section: .today, dark: false); done() }
         steps.append { [unowned self] done in self.capture(name: "today-light", attempt: 1, done: done) }
+        steps.append { [unowned self] done in self.showDashboard(section: .trends, dark: false); done() }
+        steps.append { [unowned self] done in self.capture(name: "trends-light", attempt: 1, done: done) }
         steps.append { [unowned self] done in self.showMenu(dark: true); done() }
         steps.append { [unowned self] done in self.capture(name: "menu-dark", attempt: 1, done: done) }
         steps.append { [unowned self] done in self.showMenu(dark: false); done() }
@@ -202,15 +204,17 @@ final class ScreenshotRunner {
         window?.orderOut(nil)
         model.section = section
         model.viewingDay = DayKey.today
+        // Trends is a long page: capture all of it.
+        let height: CGFloat = section == .trends ? 1640 : 820
         let root = DashboardView()
             .environmentObject(model)
-            .frame(width: 1280, height: 820)
+            .frame(width: 1280, height: height)
         let w = NSWindow(contentViewController: NSHostingController(rootView: root))
         w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         w.titlebarAppearsTransparent = true
         w.title = "Vigil"
         w.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        w.setContentSize(NSSize(width: 1280, height: 820))
+        w.setContentSize(NSSize(width: 1280, height: height))
         w.isReleasedWhenClosed = false
         w.level = .floating
         w.center()

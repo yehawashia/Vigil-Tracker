@@ -10,7 +10,7 @@ struct DashboardView: View {
         NavigationSplitView {
             List(selection: Binding(get: { model.section }, set: { if let s = $0 { model.section = s } })) {
                 Section {
-                    ForEach([DashboardSection.today, .history, .focus]) { s in
+                    ForEach([DashboardSection.today, .trends, .history, .focus]) { s in
                         Label(s.title, systemImage: s.symbol).tag(s)
                     }
                 }
@@ -33,6 +33,7 @@ struct DashboardView: View {
                 Group {
                     switch model.section {
                     case .today: TodayView()
+                    case .trends: TrendsView()
                     case .history: HistoryView()
                     case .focus: FocusView()
                     case .blocking: BlockingView()
@@ -45,9 +46,10 @@ struct DashboardView: View {
                 .frame(maxWidth: 1100, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(PaperBackground())
         }
         .tint(Theme.accent)
+        .accentColor(Theme.accent)
         .overlay(alignment: .bottom) { toast }
     }
 

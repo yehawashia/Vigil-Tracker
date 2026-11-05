@@ -4,12 +4,13 @@ import UniformTypeIdentifiers
 import VigilCore
 
 enum DashboardSection: String, CaseIterable, Identifiable {
-    case today, history, focus, blocking, categories, agents, settings
+    case today, trends, history, focus, blocking, categories, agents, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .today: return "Today"
+        case .trends: return "Trends"
         case .history: return "History"
         case .focus: return "Focus"
         case .blocking: return "Blocking"
@@ -22,6 +23,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .today: return "sun.max"
+        case .trends: return "chart.xyaxis.line"
         case .history: return "chart.bar.xaxis"
         case .focus: return "timer"
         case .blocking: return "hand.raised"
@@ -77,6 +79,8 @@ final class AppModel: ObservableObject {
     @Published var current: TrackerSnapshot?
     @Published var isIdle = false
     @Published var today: DaySummary
+    /// Charts and forecasts for the Trends page and paired devices. Built off the main thread.
+    @Published var trends: TrendsData?
     @Published var focus: FocusSession?
     @Published var activeSchedule: BlockSchedule?
     @Published var blockingActive = false
@@ -336,6 +340,27 @@ final class AppModel: ObservableObject {
             }
         }
         if useMain { compute() } else { summaryQueue.async(execute: compute) }
+    }
+
+    private var trendsInFlight = false
+
+    /// Rebuilds trends at most once a minute (or when forced, e.g. opening the page), on the reader connection.
+    func refreshTrends(force: Bool = false) {
+        guard !trendsInFlight else { return }
+        if !force, let t = trends, Date().timeIntervalSince(t.computedAt) < 60 { return }
+        if force, let t = trends, Date().timeIntervalSince(t.computedAt) < 5 { return }
+        trendsInFlight = true
+        tracker.flush()
+        let reader = readerStore ?? store
+        let work = { [weak self] in
+            let data = reader.trends()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.trendsInFlight = false
+                if self.trends != data { self.trends = data }
+            }
+        }
+        if readerStore == nil { work() } else { summaryQueue.async(execute: work) }
     }
 
     func reloadConfig() {
