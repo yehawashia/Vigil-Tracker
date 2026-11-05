@@ -57,6 +57,7 @@ public final class HostServer {
     private var syncListener: NWListener?
     private var window: PairingWindow?
     private var trendsCache: (TrendsData, Date)?
+    private var engineCache: (EngineData, Date)?
     private(set) public var connectedDevices: Set<String> = []
 
     public init(hostID: String, hostName: String, storePath: String, keyFile: DeviceKeyFile) throws {
@@ -176,13 +177,19 @@ public final class HostServer {
     private func snapshot() -> HostSnapshot {
         let now = Date()
         if trendsCache == nil || now.timeIntervalSince(trendsCache!.1) > 60 { trendsCache = (store.trends(now: now), now) }
+        if engineCache == nil || now.timeIntervalSince(engineCache!.1) > 60 {
+            var e = store.engine(days: 14, now: now)
+            e.objects = Array(e.objects.prefix(40)); e.flows = Array(e.flows.prefix(80))
+            e.transitions = Array(e.transitions.prefix(80)); e.interruptions = Array(e.interruptions.prefix(20))
+            engineCache = (e, now)
+        }
         let from = Calendar.current.startOfDay(for: now).addingTimeInterval(-7 * 86400)
         return HostSnapshot(hostID: hostID, hostName: hostName, generatedAt: now,
                             today: store.summary(day: DayKey.string(for: now)), trends: trendsCache?.0,
                             timetable: store.timetable(from: from, to: from.addingTimeInterval(35 * 86400)),
                             proposals: store.pendingProposals(), history: store.timetableHistory(limit: 50),
                             devices: store.devices(), blockedDomains: store.blocklist().filter { $0.kind == .domain }.map(\.pattern),
-                            focus: store.activeFocusSession(now: now), todos: store.todos())
+                            focus: store.activeFocusSession(now: now), todos: store.todos(), engine: engineCache?.0)
     }
 
     // MARK: Pairing

@@ -100,6 +100,19 @@ struct TrendsScreen: View {
     @State private var hourPick: Int?
 
     var body: some View {
+        if let e = state.snapshot?.engine, !e.conclusions.isEmpty {
+            MCard("00", "Conclusions", note: "\(e.trackedDays) days tracked") {
+                ForEach(Array(e.conclusions.prefix(5).enumerated()), id: \.element.id) { i, c in
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(String(format: "%02d", i + 1)).font(MTheme.label(10)).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(c.kind.rawValue.uppercased()).font(MTheme.label(9)).foregroundStyle(c.kind == .win ? MTheme.productive : MTheme.accent)
+                            Text(c.text).font(.callout).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
         if let t = state.snapshot?.trends {
             MCard("01", "Next 7 days", note: weekReadout(t)) {
                 Chart {
@@ -269,7 +282,7 @@ struct PlanScreen: View {
             DisclosureGroup("History", isExpanded: $showHistory) {
                 ForEach(snap.history.prefix(30)) { r in
                     HStack {
-                        Text(r.authorLabel.uppercased()).font(MTheme.label(8.5)).foregroundStyle(r.author == "agent" ? MTheme.accent : .secondary)
+                        Text(r.authorLabel.uppercased()).font(MTheme.label(8.5)).foregroundStyle(r.author.hasPrefix("agent") ? MTheme.accent : .secondary)
                         Text(r.summary).font(.caption).lineLimit(2)
                         Spacer()
                         if r.status == .applied {

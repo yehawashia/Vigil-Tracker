@@ -27,6 +27,15 @@ launchctl list | grep dev.vigil.Vigil          # shows a PID while running
 
 ## 2. Connect over MCP
 
+Two ways, same tools:
+
+- **stdio** (below): the agent launches `vigil-mcp`. Timetable changes are always proposals.
+- **Live server**: Vigil (running 24/7) serves MCP over HTTP at `http://127.0.0.1:47610/mcp`. The user adds the agent in **Vigil → Agents → Live server**, which shows a token once. Each agent can be marked **Trusted** (its timetable and task changes apply immediately) or not (changes wait for approval). Loopback only; requests with an `Origin` header or a foreign `Host` are refused.
+
+```bash
+claude mcp add --transport http --scope user vigil-live http://127.0.0.1:47610/mcp --header "Authorization: Bearer vgl_…"
+```
+
 The server binary is `~/Applications/Vigil.app/Contents/MacOS/vigil-mcp`.
 
 **Claude Code**
@@ -69,8 +78,8 @@ All dates accept `"today"`, `"yesterday"`, `"YYYY-MM-DD"` or `"-N"` (N days ago)
 | `add_to_blocklist` ✎ | `kind` (`domain`\|`app`), `pattern` | Adds to the blocklist |
 | `remove_from_blocklist` ✎ | `kind`, `pattern` | Removes from the blocklist. Refused during a locked session |
 | `set_daily_limit` ✎ | `kind`, `pattern`, `minutes` (0 removes it) | Sets a per-day cap. During a locked session it can only be lowered |
-| `get_timetable` | `start_date?`, `end_date?` | Tasks and time blocks, plus changes awaiting the user's approval |
-| `propose_timetable_change` ✎ | `op` (`add`\|`update`\|`delete`), `id?`, `title?`, `start?`, `end?`, `kind?` (`task`\|`block`), `notes?`, `done?`, `reason?` | A **proposal**: nothing changes until the user approves it in Vigil (Mac, iPhone or iPad) |
+| `get_timetable` | `start_date?`, `end_date?` | Scheduled items, open unscheduled `tasks`, and changes awaiting approval |
+| `propose_timetable_change` ✎ | `op` (`add`\|`update`\|`delete`), `id?`, `title?`, `start?`, `end?`, `kind?` (`task`\|`block`\|`todo`), `estimate_minutes?`, `focus?`, `notes?`, `done?`, `reason?` | A proposal the user approves in Vigil, or applied immediately if the user marked this agent as trusted (the result says which). `todo` = unscheduled task (no times needed); schedule it with an update giving `kind`, `start`, `end` |
 | `get_timetable_history` | `item_id?`, `limit?` | Every change: who made it (user, agent, device) and its status |
 | `get_devices` | none | Paired iPhones/iPads, last seen, and today's reported time |
 | `set_category` ✎ | `kind`, `pattern`, `category` (`productive`\|`neutral`\|`distracting`) | Recategorises a site or app and rescores the last 30 days |

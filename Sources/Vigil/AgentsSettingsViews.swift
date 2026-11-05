@@ -55,6 +55,8 @@ struct AgentsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            LiveServerCard()
+
             Card("Claude Desktop") {
                 Text("One click adds Vigil to Claude Desktop's config. Restart Claude afterwards.")
                     .foregroundStyle(.secondary)
@@ -317,5 +319,74 @@ struct SettingsView: View {
         }
         if results.isEmpty { results = [("No supported browser is open", "Open Safari or Chrome and try again")] }
         browserStatus = results
+    }
+}
+
+
+// MARK: - Live server
+
+/// Agents that connect to Vigil's local live server, each with its own token and trust switch.
+struct LiveServerCard: View {
+    @EnvironmentObject var model: AppModel
+    @State private var newName = ""
+    @State private var revealed: (name: String, token: String)?
+
+    var body: some View {
+        Card {
+            SectionHeader(number: "L", title: "Live server", note: model.agents.isEmpty ? "off until you add an agent" : model.agentServerURL)
+            Text("Agents connect over MCP at a local address on this Mac (no internet, refused from web pages). Each agent gets its own token. Trusted agents' timetable changes apply straight away; others wait for your approval. Everything is kept in history either way.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if let problem = model.agentServerProblem { Text(problem).font(.caption).foregroundStyle(Theme.distracting) }
+
+            ForEach(model.agents) { a in
+                HStack(spacing: 12) {
+                    Image(systemName: "sparkles").foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(a.name).font(.system(size: 13, weight: .medium))
+                        Text(a.lastUsed.map { "USED " + $0.formatted(.relative(presentation: .named)).uppercased() } ?? "NOT USED YET")
+                            .font(Theme.label(9)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("Trusted", isOn: Binding(get: { a.trusted }, set: { model.setAgentTrusted(a, $0) }))
+                        .toggleStyle(.switch).controlSize(.small)
+                        .help("Trusted: its timetable and task changes apply immediately (you can undo them in History)")
+                    Button("Remove", role: .destructive) { model.removeAgent(a) }.buttonStyle(.borderless)
+                }
+            }
+
+            HStack {
+                TextField("Agent name (e.g. Claude Code)", text: $newName).textFieldStyle(.roundedBorder).frame(maxWidth: 280)
+                Button("Add agent") {
+                    let name = newName.trimmingCharacters(in: .whitespaces)
+                    if let token = model.addAgent(name: name) { revealed = (name, token); newName = "" }
+                }
+                .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+
+            if let r = revealed {
+                let cmd = "claude mcp add --transport http --scope user vigil-live \(model.agentServerURL) --header \"Authorization: Bearer \(r.token)\""
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("TOKEN FOR \(r.name.uppercased()) · SHOWN ONCE").font(Theme.label(9)).foregroundStyle(Theme.accent)
+                    Text("Copy it now; Vigil only keeps a fingerprint of it. For Claude Code, run:").font(.caption).foregroundStyle(.secondary)
+                    Text(cmd).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                        .padding(8).frame(maxWidth: .infinity, alignment: .leading).background(Theme.hairline.opacity(0.5))
+                    HStack {
+                        Button("Copy command") { copy(cmd) }
+                        Button("Copy token only") { copy(r.token) }
+                        Spacer()
+                        Button("Done") { revealed = nil }
+                    }
+                }
+                .padding(10)
+                .overlay(Rectangle().strokeBorder(Theme.accent.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            }
+        }
+        .crosshairs()
+    }
+
+    private func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+        model.lastMessage = "Copied."
     }
 }

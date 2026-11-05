@@ -64,4 +64,12 @@ struct EngineTests {
         #expect(e.flows.first?.seconds == Double(15 * 60))
         #expect(e.flows.contains { $0.app == "Notes" && $0.site == nil && $0.category == .neutral })
     }
+
+    @Test func perDayUsesTrackedDaysNotRange() {
+        // 2 hours of YouTube on one tracked day, inside a 14-day window: 2h a day, not ~9m.
+        let segs = day([("Safari", "youtube.com", .distracting, 120)])
+        let e = Engine.build(segments: segs, windows: [], fromDay: "a", toDay: "b", days: 14)
+        #expect(e.trackedDays == 1)
+        #expect(e.conclusions.first { $0.kind == .cost }?.text.contains("2h 00m a day") == true)
+    }
 }

@@ -47,7 +47,7 @@ private struct ConclusionsCard: View {
 
     var body: some View {
         Card {
-            SectionHeader(number: "01", title: "Conclusions", note: "\(e.days) days · ranked by time involved")
+            SectionHeader(number: "01", title: "Conclusions", note: "\(e.trackedDays) of \(e.days) days tracked · ranked by time involved")
             if e.conclusions.isEmpty {
                 Text("Not enough to go on yet. Conclusions appear after a few days of tracking and planned blocks.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -210,7 +210,7 @@ private struct InspectorCard: View {
                 }
                 HStack(spacing: 18) {
                     figure("TOTAL", DurationText.short(o.seconds))
-                    figure("PER_DAY", DurationText.short(o.seconds / Double(max(1, e.days))))
+                    figure("PER_DAY", DurationText.short(o.seconds / Double(max(1, e.trackedDays))))
                     figure("VISITS", "\(o.visits)")
                     figure("AVG_VISIT", DurationText.short(o.averageVisit))
                 }

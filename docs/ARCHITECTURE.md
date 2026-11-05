@@ -280,3 +280,6 @@ rhythm curves, a 100-dot category matrix, a ranked app/site ring, forecast band.
 | 5 | MCP over stdio for agents | No open port for anything else to reach | Local HTTP API (more attack surface) |
 | 6 | Append-only revisions | Full history and safe revert | Overwriting rows, snapshots |
 | 7 | App groups in 15-minute steps | The finest detail Apple allows to leave the Screen Time sandbox via thresholds | Claiming exact per-app times |
+| 8 | Live agent server on 127.0.0.1 with per-agent tokens and trust | Agents can connect to the always-on app; the user decides per agent whether changes need approval | Network-reachable API; one shared token |
+| 9 | Flow arcs + object model instead of 3D terrain | Answers "where does my time go and what leads there"; the terrain looked good but didn't support conclusions | 3D surfaces |
+| 10 | On-device speech, rule-based parsing (NSDataDetector) | Private and instant; preview card lets the user fix mistakes | Cloud speech / LLM parsing |

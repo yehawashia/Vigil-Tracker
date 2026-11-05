@@ -76,6 +76,8 @@ public struct EngineData: Codable, Hashable {
     public var fromDay: String
     public var toDay: String
     public var days: Int
+    /// Days in the range that have any activity. Per-day figures divide by this, not by `days`.
+    public var trackedDays: Int = 1
     public var objects: [EngineObject]          // by time, descending
     public var flows: [FlowLink]
     public var transitions: [Transition]        // by count, descending
@@ -208,6 +210,7 @@ public enum Engine {
                               flows: flows.values.sorted { $0.seconds > $1.seconds },
                               transitions: transitions, gateways: gateways, interruptions: interruptions,
                               conclusions: [], computedAt: now)
+        data.trackedDays = max(1, Set(runs.map { Calendar.current.startOfDay(for: $0.start) }).count)
         data.conclusions = conclusions(for: data, runs: runs.map { ($0.start, $0.seconds, $0.category) })
         return data
     }
@@ -216,7 +219,7 @@ public enum Engine {
 
     static func conclusions(for d: EngineData, runs: [(Date, Double, ActivityCategory)]) -> [Conclusion] {
         var out: [Conclusion] = []
-        let perDay = Double(max(1, d.days))
+        let perDay = Double(max(1, d.trackedDays))
         func t(_ s: Double) -> String { DurationText.short(s) }
 
         // Costs: the biggest distracting objects, per day.
@@ -228,7 +231,7 @@ public enum Engine {
         for g in d.gateways.prefix(3) where g.toDistractingShare >= 0.25 {
             let dest = g.topDestination.map { ", most often \($0)" } ?? ""
             out.append(Conclusion(kind: .gateway,
-                                  text: "Leaving \(g.key) leads somewhere distracting \(Int((g.toDistractingShare * 100).rounded()))% of the time\(dest). That's \(t(g.distractingSecondsAfter)) over \(d.days) days.",
+                                  text: "Leaving \(g.key) leads somewhere distracting \(Int((g.toDistractingShare * 100).rounded()))% of the time\(dest). That's \(t(g.distractingSecondsAfter)) over \(d.trackedDays) tracked day\(d.trackedDays == 1 ? "" : "s").",
                                   subject: g.key, impactSeconds: g.distractingSecondsAfter))
         }
         // Interruptions: which plans leak, and to what.

@@ -110,6 +110,7 @@ public struct TimetableRevision: Codable, Hashable, Identifiable {
     public var authorLabel: String {
         if author == "mac" { return "You (Mac)" }
         if author == "agent" { return "Agent" }
+        if author.hasPrefix("agent:") { return String(author.dropFirst(6)) }
         if author.hasPrefix("device:") { return "Paired device" }
         return author
     }

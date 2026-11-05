@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import VigilCore
 import VigilSync
+import VigilAgentKit
 
 enum DashboardSection: String, CaseIterable, Identifiable {
     case today, engine, trends, timetable, history, focus, blocking, devices, categories, agents, settings
@@ -133,6 +134,12 @@ final class AppModel: ObservableObject {
     @Published var onlineDevices: Set<String> = []
     @Published var pairing: PairingEvent?
 
+    // Live agent server (MCP over HTTP on 127.0.0.1)
+    private var agentServer: AgentHTTPServer?
+    @Published var agents: [AgentToken] = []
+    @Published var agentServerPort: UInt16?
+    @Published var agentServerProblem: String?
+
     // Navigation
     @Published var section: DashboardSection = .today
     @Published var viewingDay: String = DayKey.today
@@ -243,6 +250,7 @@ final class AppModel: ObservableObject {
         self.timer = timer
 
         startHost()
+        reloadAgents()
         catchUpMissedReport()
         tick()
         refreshSummary(force: true)
@@ -360,6 +368,52 @@ final class AppModel: ObservableObject {
 
     func deviceUsageToday(_ d: PairedDevice) -> [DeviceUsage] {
         store.deviceUsage(deviceID: d.id, sinceDay: DayKey.today)
+    }
+
+    // MARK: - Live agent server
+
+    var agentServerURL: String { "http://127.0.0.1:\(agentServerPort ?? AgentHTTPServer.defaultPort)/mcp" }
+
+    /// Runs the server only while at least one agent is registered; nothing listens otherwise.
+    func reloadAgents() {
+        agents = store.agents()
+        guard !demoMode else { return }
+        if agents.isEmpty {
+            agentServer?.stop(); agentServer = nil; agentServerPort = nil
+        } else if agentServer == nil {
+            do {
+                let s = try AgentHTTPServer(storePath: VigilPaths.databaseURL.path)
+                try s.start()
+                s.onRequest = { [weak self] _ in self?.agents = self?.store.agents() ?? [] }
+                agentServer = s
+                agentServerPort = s.port
+                agentServerProblem = nil
+            } catch {
+                agentServerProblem = "Couldn't start on port \(AgentHTTPServer.defaultPort): another app may be using it."
+            }
+        }
+    }
+
+    /// Adds an agent and returns its token (shown once).
+    func addAgent(name: String) -> String? {
+        do {
+            let (_, token) = try store.createAgent(name: name)
+            reloadAgents()
+            return token
+        } catch {
+            lastMessage = "\(error)"
+            return nil
+        }
+    }
+
+    func setAgentTrusted(_ a: AgentToken, _ trusted: Bool) {
+        store.setAgentTrusted(id: a.id, trusted)
+        reloadAgents()
+    }
+
+    func removeAgent(_ a: AgentToken) {
+        store.deleteAgent(id: a.id)
+        reloadAgents()
     }
 
     // MARK: - Tabs

@@ -91,6 +91,7 @@ public final class VigilStore {
         """)
         try db.exec(VigilStore.timetableSchema)
         try db.exec(VigilStore.devicesSchema)
+        try db.exec(VigilStore.agentsSchema)
     }
 
     /// Bump when the schema changes; add a step to `upgradeSchema` for each version.

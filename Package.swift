@@ -35,21 +35,27 @@ let package = Package(
             dependencies: ["VigilCore", "VigilSync", "VigilVoice"],
             path: "Sources/VigilMobile"
         ),
+        // MCP tools shared by vigil-mcp (stdio) and the app's live agent server (HTTP on 127.0.0.1).
+        .target(
+            name: "VigilAgentKit",
+            dependencies: ["VigilCore"],
+            path: "Sources/VigilAgentKit"
+        ),
         // The menu-bar app: tracking, blocking, dashboard, daily reports, pairing host.
         .executableTarget(
             name: "Vigil",
-            dependencies: ["VigilCore", "VigilSync", "VigilVoice"],
+            dependencies: ["VigilCore", "VigilSync", "VigilVoice", "VigilAgentKit"],
             path: "Sources/Vigil"
         ),
         // stdio MCP server that agents (Claude Desktop, Claude Code, etc.) launch.
         .executableTarget(
             name: "VigilMCP",
-            dependencies: ["VigilCore"],
+            dependencies: ["VigilCore", "VigilAgentKit"],
             path: "Sources/VigilMCP"
         ),
         .testTarget(
             name: "VigilCoreTests",
-            dependencies: ["VigilCore", "VigilSync"],
+            dependencies: ["VigilCore", "VigilSync", "VigilAgentKit"],
             path: "Tests/VigilCoreTests"
         ),
     ]

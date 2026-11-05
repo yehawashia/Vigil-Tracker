@@ -107,12 +107,13 @@ struct TimetableView: View {
 struct AuthorChip: View {
     var author: String
     var body: some View {
-        let label = author == "mac" ? "MAC" : author == "agent" ? "AGENT" : "DEVICE"
+        let isAgent = author.hasPrefix("agent")
+        let label = author == "mac" ? "MAC" : isAgent ? (author.hasPrefix("agent:") ? String(author.dropFirst(6)).uppercased() : "AGENT") : "DEVICE"
         Text(label)
             .font(Theme.label(8.5))
             .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(Capsule().strokeBorder(author == "agent" ? Theme.accent : Theme.hairline))
-            .foregroundStyle(author == "agent" ? Theme.accent : .secondary)
+            .background(Capsule().strokeBorder(isAgent ? Theme.accent : Theme.hairline))
+            .foregroundStyle(isAgent ? Theme.accent : .secondary)
     }
 }
 
@@ -130,7 +131,7 @@ struct ProposalsCard: View {
                         if let note = p.note, !note.isEmpty {
                             Text("“\(note)”").font(.caption).foregroundStyle(.secondary)
                         }
-                        Text("Suggested by your agent · \(p.time.formatted(date: .omitted, time: .shortened))")
+                        Text("Suggested by \(p.author.hasPrefix("agent:") ? String(p.author.dropFirst(6)) : "your agent") · \(p.time.formatted(date: .omitted, time: .shortened))")
                             .font(Theme.label(9)).foregroundStyle(.secondary)
                     }
                     Spacer()

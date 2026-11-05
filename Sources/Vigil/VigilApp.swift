@@ -78,18 +78,9 @@ struct MenuBarLabel: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        MenuBarLabelContent(clock: model.clock)
-    }
-}
-
-private struct MenuBarLabelContent: View {
-    @EnvironmentObject var model: AppModel
-    @ObservedObject var clock: Clock
-
-    var body: some View {
         if let focus = model.focus {
-            Text("\(Image(systemName: focus.locked ? "lock.fill" : "timer")) \(DurationText.clock(focus.end.timeIntervalSince(clock.now)))")
-                .monospacedDigit()
+            // Only the countdown needs a per-second redraw; everything else updates when its data changes.
+            FocusCountdownLabel(focus: focus, clock: model.clock)
         } else if model.trackingPaused {
             Image(systemName: "pause.circle")
         } else if model.today.activeSeconds > 300 {
@@ -98,6 +89,16 @@ private struct MenuBarLabelContent: View {
         } else {
             if model.blockingActive { Image(systemName: "hand.raised.fill") } else { Image(nsImage: LogoGlyph.menuBar) }
         }
+    }
+}
+
+private struct FocusCountdownLabel: View {
+    var focus: FocusSession
+    @ObservedObject var clock: Clock
+
+    var body: some View {
+        Text("\(Image(systemName: focus.locked ? "lock.fill" : "timer")) \(DurationText.clock(focus.end.timeIntervalSince(clock.now)))")
+            .monospacedDigit()
     }
 }
 
@@ -139,7 +140,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
 enum LogoGlyph {
     static let menuBar: NSImage = {
         let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
+        let vector = NSImage(size: size, flipped: false) { rect in
             let c = CGPoint(x: rect.midX, y: rect.midY)
             NSColor.black.setStroke()
             for k in 0..<6 {
@@ -167,6 +168,19 @@ enum LogoGlyph {
                 rim.stroke()
             }
             return true
+        }
+        // Rasterise once: a drawing-handler image is redrawn on every menu-bar layout pass.
+        let image = NSImage(size: size)
+        for scale in [1, 2] {
+            let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * scale, pixelsHigh: Int(size.height) * scale,
+                                       bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                       colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+            rep.size = size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            vector.draw(in: NSRect(origin: .zero, size: size))
+            NSGraphicsContext.restoreGraphicsState()
+            image.addRepresentation(rep)
         }
         image.isTemplate = true
         image.accessibilityDescription = "Vigil"
