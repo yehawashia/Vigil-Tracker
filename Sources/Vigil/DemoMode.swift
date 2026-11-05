@@ -205,7 +205,7 @@ final class ScreenshotRunner {
     func run() {
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         let sections: [(DashboardSection, String)] = [
-            (.today, "today"), (.trends, "trends"), (.timetable, "timetable"), (.devices, "devices"), (.history, "history"), (.focus, "focus"),
+            (.today, "today"), (.engine, "engine"), (.trends, "trends"), (.timetable, "timetable"), (.devices, "devices"), (.history, "history"), (.focus, "focus"),
             (.blocking, "blocking"), (.categories, "categories"), (.agents, "agents"),
         ]
         for (section, name) in sections {
@@ -214,6 +214,8 @@ final class ScreenshotRunner {
         }
         steps.append { [unowned self] done in self.showDashboard(section: .today, dark: false); done() }
         steps.append { [unowned self] done in self.capture(name: "today-light", attempt: 1, done: done) }
+        steps.append { [unowned self] done in self.showDashboard(section: .engine, dark: false); done() }
+        steps.append { [unowned self] done in self.capture(name: "engine-light", attempt: 1, done: done) }
         steps.append { [unowned self] done in self.showDashboard(section: .trends, dark: false); done() }
         steps.append { [unowned self] done in self.capture(name: "trends-light", attempt: 1, done: done) }
         steps.append { [unowned self] done in self.showMenu(dark: true); done() }
@@ -247,7 +249,7 @@ final class ScreenshotRunner {
             model.pairing = .open(mode: .qr, qrURL: "vigil://pair?v=1&h=demo&n=Demo%20Mac&k=AAAAAAAAAAAAAAAAAAAAAA&s=demo", expires: Date().addingTimeInterval(97))
         }
         // Trends is a long page: capture all of it.
-        let height: CGFloat = section == .trends ? 2140 : section == .timetable ? 1180 : section == .history ? 1560 : 820
+        let height: CGFloat = section == .engine ? 1500 : section == .trends ? 2140 : section == .timetable ? 1180 : section == .history ? 1560 : 820
         let root = DashboardView()
             .environmentObject(model)
             .frame(width: 1280, height: height)

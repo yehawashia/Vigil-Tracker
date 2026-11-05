@@ -10,7 +10,7 @@ struct DashboardView: View {
         NavigationSplitView {
             List(selection: Binding(get: { model.section }, set: { if let s = $0 { model.section = s } })) {
                 Section {
-                    ForEach([DashboardSection.today, .trends, .timetable, .history, .focus]) { s in
+                    ForEach([DashboardSection.today, .engine, .trends, .timetable, .history, .focus]) { s in
                         Label(s.title, systemImage: s.symbol).tag(s)
                     }
                 }
@@ -34,6 +34,7 @@ struct DashboardView: View {
                 Group {
                     switch model.section {
                     case .today: TodayView()
+                    case .engine: EngineView()
                     case .trends: TrendsView()
                     case .timetable: TimetableView()
                     case .devices: DevicesView()

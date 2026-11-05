@@ -5,12 +5,13 @@ import VigilCore
 import VigilSync
 
 enum DashboardSection: String, CaseIterable, Identifiable {
-    case today, trends, timetable, history, focus, blocking, devices, categories, agents, settings
+    case today, engine, trends, timetable, history, focus, blocking, devices, categories, agents, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .today: return "Today"
+        case .engine: return "Engine"
         case .trends: return "Trends"
         case .timetable: return "Timetable"
         case .devices: return "Devices"
@@ -26,6 +27,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .today: return "sun.max"
+        case .engine: return "point.3.connected.trianglepath.dotted"
         case .trends: return "chart.xyaxis.line"
         case .timetable: return "calendar"
         case .devices: return "ipad.and.iphone"
@@ -86,6 +88,11 @@ final class AppModel: ObservableObject {
     @Published var today: DaySummary
     /// Charts and forecasts for the Trends page and paired devices. Built off the main thread.
     @Published var trends: TrendsData?
+    /// Objects, links and conclusions (the data engine). Built off the main thread.
+    @Published var engine: EngineData?
+    @Published var engineDays = 14
+    /// Object open in the Engine inspector.
+    @Published var inspected: String?
     @Published var focus: FocusSession?
     @Published var activeSchedule: BlockSchedule?
     @Published var blockingActive = false
@@ -418,6 +425,26 @@ final class AppModel: ObservableObject {
     }
 
     private var trendsInFlight = false
+    private var engineInFlight = false
+
+    /// Rebuilds the engine at most once a minute (or when forced), on the reader connection.
+    func refreshEngine(force: Bool = false) {
+        guard !engineInFlight else { return }
+        if !force, let e = engine, e.days == engineDays, Date().timeIntervalSince(e.computedAt) < 60 { return }
+        engineInFlight = true
+        tracker.flush()
+        let reader = readerStore ?? store
+        let days = engineDays
+        let work = { [weak self] in
+            let data = reader.engine(days: days)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.engineInFlight = false
+                if self.engine != data { self.engine = data }
+            }
+        }
+        if readerStore == nil { work() } else { summaryQueue.async(execute: work) }
+    }
 
     /// Rebuilds trends at most once a minute (or when forced, e.g. opening the page), on the reader connection.
     func refreshTrends(force: Bool = false) {

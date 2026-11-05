@@ -16,7 +16,7 @@ struct TrendsView: View {
                     TodayForecastCard(t: t).frame(maxWidth: .infinity).crosshairs()
                     WeekForecastCard(t: t).frame(maxWidth: .infinity).crosshairs()
                 }
-                TerrainCard(t: t)
+                HeatmapCard(t: t).crosshairs()
                 BarcodeCard(t: t).crosshairs()
                 HStack(alignment: .top, spacing: 16) {
                     RhythmCard(t: t).frame(maxWidth: .infinity).crosshairs()
