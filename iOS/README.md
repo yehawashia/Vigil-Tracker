@@ -16,7 +16,7 @@ macOS with `swift build`); this folder holds only the iOS-specific parts.
 2. Install **XcodeGen** (generates the Xcode project from `project-free.yml`).
 3. In `project-free.yml`, change `com.CHANGE-ME.vigil` to something unique, e.g. `com.yourname.vigil`.
 4. `cd iOS && xcodegen --spec project-free.yml && open Vigil.xcodeproj`
-5. In Xcode: select the **Vigil** target → *Signing & Capabilities* → Team: your Apple ID (Personal Team).
+5. In Xcode: select the **VigiliOS** target → *Signing & Capabilities* → Team: your Apple ID (Personal Team).
 6. Plug in your iPhone or iPad, pick it as the run destination, press **Run**. On the device, trust the
    developer in *Settings → General → VPN & Device Management*.
 7. On the Mac: Vigil → **Devices** → **Start pairing**, then scan the code from the app.

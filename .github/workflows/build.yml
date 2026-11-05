@@ -57,10 +57,10 @@ jobs:
         run: |
           cd iOS
           xcodegen --spec project-free.yml
-          xcodebuild -project Vigil.xcodeproj -scheme Vigil -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40; test ${PIPESTATUS[0]} -eq 0
+          xcodebuild -project Vigil.xcodeproj -scheme VigiliOS -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40; test ${PIPESTATUS[0]} -eq 0
       - name: Build full app with Screen Time + extensions (unsigned)
         run: |
           cd iOS
           rm -rf Vigil.xcodeproj
           xcodegen --spec project.yml
-          xcodebuild -project Vigil.xcodeproj -scheme Vigil -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40; test ${PIPESTATUS[0]} -eq 0
+          xcodebuild -project Vigil.xcodeproj -scheme VigiliOS -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40; test ${PIPESTATUS[0]} -eq 0

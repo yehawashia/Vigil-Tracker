@@ -12,7 +12,7 @@ settings:
     SWIFT_VERSION: "5"
     SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) VIGIL_SCREEN_TIME"
 targets:
-  Vigil:
+  VigiliOS:
     type: application
     platform: iOS
     sources:
@@ -25,6 +25,7 @@ targets:
       - target: VigilSafari
     settings:
       base:
+        PRODUCT_NAME: Vigil
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_BUNDLE_IDENTIFIER: ${bundleIdPrefix}.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
