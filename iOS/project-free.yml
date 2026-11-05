@@ -36,3 +36,6 @@ targets:
         NSCameraUsageDescription: Scan the pairing code shown by Vigil on your Mac. Nothing is recorded.
         NSLocalNetworkUsageDescription: Vigil syncs only with the Mac you pair it with, on your local network, encrypted. It never uses the internet.
         NSBonjourServices: [_vigil._tcp, _vigilpair._tcp]
+        CFBundleURLTypes:
+          - CFBundleURLName: Vigil pairing
+            CFBundleURLSchemes: [vigil]

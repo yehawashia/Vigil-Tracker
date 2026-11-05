@@ -24,6 +24,8 @@ public struct VigilRootView: View {
     @ObservedObject var state: DeviceState
     var qrScanner: ((@escaping (String) -> Void) -> AnyView)?
     @State private var section: MobileSection = .today
+    /// A vigil://pair link opened from the Camera app (or anywhere). Never acted on without asking.
+    @State private var pairLink: Pairing.QRPayload?
     @AppStorage("appearance") private var appearance: MobileAppearance = .system
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -72,6 +74,24 @@ public struct VigilRootView: View {
             if p == .active, state.pairing != nil { state.startAutoSync() } else { state.stopAutoSync() }
         }
         .onAppear { if state.pairing != nil { state.startAutoSync() } }
+        .onOpenURL { url in
+            guard let payload = Pairing.QRPayload(url: url.absoluteString) else { return }
+            if state.pairing != nil {
+                state.message = "This device is already paired with \(state.hostName). Unpair it first (Mac tab)."
+            } else {
+                pairLink = payload
+            }
+        }
+        .confirmationDialog("Pair with \(pairLink?.hostName ?? "this Mac")?", isPresented: Binding(get: { pairLink != nil }, set: { if !$0 { pairLink = nil } }),
+                            titleVisibility: .visible) {
+            Button("Pair") {
+                if let link = pairLink { Task { await state.pair(qrText: link.url) } }
+                pairLink = nil
+            }
+            Button("Cancel", role: .cancel) { pairLink = nil }
+        } message: {
+            Text("Only continue if this is your Mac and its screen is showing a Vigil pairing code right now.")
+        }
         .alert(state.message ?? "", isPresented: Binding(get: { state.message != nil }, set: { if !$0 { state.message = nil } })) {
             Button("OK", role: .cancel) {}
         }
