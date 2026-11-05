@@ -243,17 +243,15 @@ struct ProposalsCard: View {
 
 struct PlanScreen: View {
     @ObservedObject var state: DeviceState
-    @State private var editing: TimetableItem?
-    @State private var isNew = false
+    @State private var editing: TimetableEdit?
     @State private var showHistory = false
 
     var body: some View {
         if let snap = state.snapshot {
             if !snap.proposals.isEmpty { ProposalsCard(state: state, proposals: snap.proposals) }
             Button {
-                isNew = true
                 let start = Calendar.current.nextDate(after: Date(), matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? Date()
-                editing = TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600))
+                editing = TimetableEdit(item: TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600)), isNew: true)
             } label: { Label("Add to timetable", systemImage: "plus").frame(maxWidth: .infinity) }
                 .buttonStyle(.borderedProminent)
             let upcoming = snap.timetable.filter { $0.end > Calendar.current.startOfDay(for: Date()) }
@@ -261,7 +259,7 @@ struct PlanScreen: View {
             ForEach(byDay.keys.sorted(), id: \.self) { day in
                 MCard(nil, dayLabel(day, "EEEE d MMM")) {
                     ForEach(byDay[day]!.sorted { $0.start < $1.start }) { item in
-                        Button { isNew = false; editing = item } label: { row(item) }.buttonStyle(.plain)
+                        Button { editing = TimetableEdit(item: item, isNew: false) } label: { row(item) }.buttonStyle(.plain)
                     }
                 }
             }
@@ -281,12 +279,12 @@ struct PlanScreen: View {
                 }
             }
             .padding(.horizontal, 4)
-            .sheet(item: $editing) { item in
-                MobileEditor(item: item, isNew: isNew) { result in
+            .sheet(item: $editing) { edit in
+                MobileEditor(item: edit.item, isNew: edit.isNew) { result in
                     editing = nil
                     Task {
                         switch result {
-                        case .save(let i): await state.request(.editTimetable(op: isNew ? .create : .update, item: i))
+                        case .save(let i): await state.request(.editTimetable(op: edit.isNew ? .create : .update, item: i))
                         case .delete(let i): await state.request(.editTimetable(op: .delete, item: i))
                         case .cancel: break
                         }

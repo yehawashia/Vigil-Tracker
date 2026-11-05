@@ -37,6 +37,15 @@ public struct TimetableItem: Codable, Hashable, Identifiable {
     }
 }
 
+/// What a timetable editor sheet is showing. "New or existing" travels with the item, because a separate
+/// @State flag read only inside a sheet's closure can be stale when the sheet opens (SwiftUI pitfall).
+public struct TimetableEdit: Identifiable {
+    public var item: TimetableItem
+    public var isNew: Bool
+    public var id: String { item.id }
+    public init(item: TimetableItem, isNew: Bool) { self.item = item; self.isNew = isNew }
+}
+
 public enum TimetableError: Error, CustomStringConvertible {
     case invalid(String)
     case notFound

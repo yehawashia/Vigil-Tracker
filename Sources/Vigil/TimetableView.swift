@@ -8,8 +8,7 @@ struct TimetableView: View {
     @State private var weekStart = TimetableView.startOfWeek(Date())
     @State private var items: [TimetableItem] = []
     @State private var history: [TimetableRevision] = []
-    @State private var editing: TimetableItem?
-    @State private var editingIsNew = false
+    @State private var editing: TimetableEdit?
 
     static func startOfWeek(_ date: Date) -> Date {
         let cal = Calendar.current
@@ -23,10 +22,9 @@ struct TimetableView: View {
             Card {
                 WeekGrid(weekStart: weekStart, items: items,
                          pending: model.proposals.compactMap { $0.op == .delete ? nil : $0.after },
-                         onSelect: { editingIsNew = false; editing = $0 },
+                         onSelect: { editing = TimetableEdit(item: $0, isNew: false) },
                          onCreate: { start in
-                             editingIsNew = true
-                             editing = TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600))
+                             editing = TimetableEdit(item: TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600)), isNew: true)
                          })
             }
             historyCard
@@ -34,11 +32,11 @@ struct TimetableView: View {
         .onAppear(perform: load)
         .onChange(of: weekStart) { _ in load() }
         .onChange(of: model.timetableVersion) { _ in load() }
-        .sheet(item: $editing) { item in
-            TimetableEditor(item: item, isNew: editingIsNew) { result in
+        .sheet(item: $editing) { edit in
+            TimetableEditor(item: edit.item, isNew: edit.isNew) { result in
                 editing = nil
                 switch result {
-                case .save(let i): model.saveTimetableItem(i, isNew: editingIsNew)
+                case .save(let i): model.saveTimetableItem(i, isNew: edit.isNew)
                 case .delete(let i): model.deleteTimetableItem(i)
                 case .cancel: break
                 }
@@ -64,9 +62,8 @@ struct TimetableView: View {
                     .disabled(weekStart == TimetableView.startOfWeek(Date()))
                 Button { weekStart = weekStart.addingTimeInterval(7 * 86400) } label: { Image(systemName: "chevron.right") }
                 Button {
-                    editingIsNew = true
                     let start = Calendar.current.nextDate(after: Date(), matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? Date()
-                    editing = TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600))
+                    editing = TimetableEdit(item: TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600)), isNew: true)
                 } label: { Label("New", systemImage: "plus") }
                     .buttonStyle(.borderedProminent)
             }
