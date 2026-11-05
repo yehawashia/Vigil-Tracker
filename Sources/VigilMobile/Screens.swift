@@ -426,22 +426,30 @@ struct MobileDial: View {
                 }
             }
             .contentShape(Circle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                let dx = v.location.x - size / 2, dy = v.location.y - size / 2
-                guard dx * dx + dy * dy > 100 else { return }
-                var a = atan2(Double(dx), Double(-dy)); if a < 0 { a += 2 * .pi }
-                var value = Int((a / (2 * .pi) * Double(maxMinutes) / Double(step)).rounded()) * step
-                if minutes >= maxMinutes * 3 / 4 && value < maxMinutes / 4 { value = maxMinutes }
-                if minutes <= maxMinutes / 4 && value > maxMinutes * 3 / 4 { value = step }
-                let clamped = min(maxMinutes, max(step, value))
-                if clamped != minutes { minutes = clamped; MHaptics.tick() }
-            })
+            .gesture(DragGesture(minimumDistance: 0).onChanged { v in drag(to: v.location, size: size) })
             .accessibilityElement()
             .accessibilityLabel("Focus length")
             .accessibilityValue("\(minutes) minutes")
             .accessibilityAdjustableAction { d in
                 minutes = min(maxMinutes, max(step, minutes + (d == .increment ? step : -step)))
             }
+        }
+    }
+
+    /// Angle from 12 o'clock → minutes, snapped to 5; never wraps past the top.
+    private func drag(to p: CGPoint, size: CGFloat) {
+        let dx = Double(p.x - size / 2), dy = Double(p.y - size / 2)
+        guard dx * dx + dy * dy > 100 else { return }
+        var angle = atan2(dx, -dy)
+        if angle < 0 { angle += 2 * Double.pi }
+        let steps = (angle / (2 * Double.pi) * Double(maxMinutes) / Double(step)).rounded()
+        var value = Int(steps) * step
+        if minutes >= maxMinutes * 3 / 4 && value < maxMinutes / 4 { value = maxMinutes }
+        if minutes <= maxMinutes / 4 && value > maxMinutes * 3 / 4 { value = step }
+        let clamped = min(maxMinutes, max(step, value))
+        if clamped != minutes {
+            minutes = clamped
+            MHaptics.tick()
         }
     }
 }

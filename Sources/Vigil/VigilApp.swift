@@ -93,10 +93,10 @@ private struct MenuBarLabelContent: View {
         } else if model.trackingPaused {
             Image(systemName: "pause.circle")
         } else if model.today.activeSeconds > 300 {
-            Text("\(Image(systemName: model.blockingActive ? "hand.raised.fill" : "eye")) \(model.today.score)")
+            Text("\(model.blockingActive ? Image(systemName: "hand.raised.fill") : Image(nsImage: LogoGlyph.menuBar)) \(model.today.score)")
                 .monospacedDigit()
         } else {
-            Image(systemName: model.blockingActive ? "hand.raised.fill" : "eye")
+            if model.blockingActive { Image(systemName: "hand.raised.fill") } else { Image(nsImage: LogoGlyph.menuBar) }
         }
     }
 }
@@ -132,4 +132,44 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
     }
+}
+
+/// Vigil's logo simplified for the menu bar: six funnel-shaped petals with elliptical rims, drawn as
+/// thin lines. A template image, so macOS tints it for light and dark menu bars.
+enum LogoGlyph {
+    static let menuBar: NSImage = {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let c = CGPoint(x: rect.midX, y: rect.midY)
+            NSColor.black.setStroke()
+            for k in 0..<6 {
+                let a = CGFloat(k) * .pi / 3
+                let dir = CGPoint(x: cos(a), y: sin(a)), perp = CGPoint(x: -sin(a), y: cos(a))
+                let inner: CGFloat = 1.1, outer: CGFloat = 7.6, waist: CGFloat = 0.45, mouth: CGFloat = 2.3
+                func pt(_ along: CGFloat, _ across: CGFloat) -> CGPoint {
+                    CGPoint(x: c.x + dir.x * along + perp.x * across, y: c.y + dir.y * along + perp.y * across)
+                }
+                // Funnel sides, curving outward like the drawing.
+                let sides = NSBezierPath()
+                for side: CGFloat in [-1, 1] {
+                    sides.move(to: pt(inner, side * waist))
+                    sides.curve(to: pt(outer, side * mouth), controlPoint1: pt(outer * 0.6, side * waist * 1.2),
+                                controlPoint2: pt(outer * 0.85, side * mouth * 0.7))
+                }
+                sides.lineWidth = 1.0
+                sides.stroke()
+                // Elliptical rim at the mouth.
+                let rim = NSBezierPath(ovalIn: NSRect(x: -0.9, y: -mouth, width: 1.8, height: mouth * 2))
+                var t = AffineTransform(translationByX: pt(outer, 0).x, byY: pt(outer, 0).y)
+                t.rotate(byRadians: a)
+                rim.transform(using: t)
+                rim.lineWidth = 0.9
+                rim.stroke()
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Vigil"
+        return image
+    }()
 }
