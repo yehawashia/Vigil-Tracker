@@ -108,6 +108,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate {
     static let shared = DashboardWindowController()
     private var window: NSWindow?
 
+    var isVisible: Bool { window?.isVisible == true }
+
     func show(model: AppModel) {
         if window == nil {
             let root = DashboardView()

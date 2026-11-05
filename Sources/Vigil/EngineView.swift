@@ -21,13 +21,10 @@ struct EngineView: View {
             }
             if let e = model.engine {
                 ConclusionsCard(e: e)
-                Card {
-                    SectionHeader(number: "02", title: "Flow", note: "category → app → site · hover to trace, click to inspect")
-                    FlowArcs(e: e, selected: $model.inspected).frame(height: 460)
-                }
-                .crosshairs()
+                FlowCard(e: e)
                 HStack(alignment: .top, spacing: 16) {
                     InspectorCard(e: e).frame(maxWidth: .infinity)
+                        .animation(.easeOut(duration: 0.18), value: model.inspected)
                     InterruptionsCard(e: e).frame(maxWidth: .infinity)
                 }
             } else {
@@ -44,6 +41,7 @@ struct EngineView: View {
 private struct ConclusionsCard: View {
     var e: EngineData
     @EnvironmentObject var model: AppModel
+    @State private var hovered: String?
 
     var body: some View {
         Card {
@@ -63,132 +61,163 @@ private struct ConclusionsCard: View {
                         Spacer(minLength: 8)
                         Text(DurationText.short(c.impactSeconds)).font(Theme.label(10)).foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 3).padding(.horizontal, 4)
+                    .background(RoundedRectangle(cornerRadius: 3).fill(Theme.accent.opacity(hovered == c.id && c.subject != nil ? 0.08 : 0)))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .padding(.vertical, 3)
+                .onHover { hovered = $0 ? c.id : (hovered == c.id ? nil : hovered) }
+                .help(c.subject.map { "Show \($0) in the flow and inspector" } ?? "")
             }
         }
     }
 }
 
-// MARK: - Flow arcs
+// MARK: - Flow
 
-/// Three columns (categories, apps, sites) joined by curved bands whose width is time.
-/// Drawn in one Canvas; hovering a node highlights only its bands.
+/// Holds the last computed layout so hovering never recomputes geometry.
+private final class FlowCache: ObservableObject {
+    private var key: (Date, Int, CGSize)?
+    private var value = FlowLayout(nodes: [], bands: [], size: .zero, total: 0)
+    func layout(_ e: EngineData, _ size: CGSize) -> FlowLayout {
+        if let k = key, k.0 == e.computedAt, k.1 == e.days, k.2 == size { return value }
+        value = FlowLayout.build(flows: e.flows, size: size)
+        key = (e.computedAt, e.days, size)
+        return value
+    }
+}
+
+private struct FlowCard: View {
+    var e: EngineData
+    @EnvironmentObject var model: AppModel
+    @State private var hover: String?
+
+    var body: some View {
+        Card {
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader(number: "02", title: "Flow", note: nil)
+                Spacer()
+                Text(readout ?? "category → app → site · hover to trace · click to inspect")
+                    .font(Theme.label(9.5)).foregroundStyle(readout == nil ? Color.secondary : Theme.accent).lineLimit(1)
+                if model.inspected != nil {
+                    Button { model.inspected = nil } label: { Label("Clear", systemImage: "xmark").font(Theme.label(9.5)) }
+                        .buttonStyle(.borderless).help("Stop highlighting")
+                }
+            }
+            FlowArcs(e: e, selected: $model.inspected, hover: $hover).frame(height: 460)
+        }
+        .crosshairs()
+    }
+
+    private var readout: String? {
+        guard let id = hover else { return nil }
+        let name = String(id.dropFirst(2))
+        let secs = e.flows.reduce(0.0) { acc, f in
+            switch id.prefix(2) {
+            case "c:": return acc + (f.category.rawValue == name ? f.seconds : 0)
+            case "a:": return acc + (f.app == name ? f.seconds : 0)
+            default: return acc + (f.site == name ? f.seconds : 0)
+            }
+        }
+        let total = max(1, e.flows.reduce(0) { $0 + $1.seconds })
+        guard secs > 0 else { return name.uppercased() }
+        return "\(name.uppercased()) · \(DurationText.short(secs)) · \(Int((secs / total * 100).rounded()))% OF TRACKED TIME"
+    }
+}
+
+/// Category → app → site, drawn in one Canvas from a cached layout.
+/// Hover or click anywhere on a row (bar or label); click it again, or on empty space, to clear.
 struct FlowArcs: View {
     var e: EngineData
     @Binding var selected: String?
-    @State private var hover: String?
-
-    private struct Node { var id: String; var label: String; var column: Int; var seconds: Double; var category: ActivityCategory?; var rect: CGRect = .zero }
-    private struct Band { var from: String; var to: String; var seconds: Double; var category: ActivityCategory }
-
-    /// Top 10 apps and 14 sites; the rest are folded into "Other".
-    private func layout(size: CGSize) -> (nodes: [String: Node], bands: [Band]) {
-        let topApps = Set(Dictionary(grouping: e.flows, by: \.app).mapValues { $0.reduce(0) { $0 + $1.seconds } }
-            .sorted { $0.value > $1.value }.prefix(10).map(\.key))
-        let topSites = Set(Dictionary(grouping: e.flows.compactMap { f in f.site.map { (site: $0, s: f.seconds) } }, by: \.site)
-            .mapValues { $0.reduce(0) { $0 + $1.s } }.sorted { $0.value > $1.value }.prefix(14).map(\.key))
-        var nodes: [String: Node] = [:]
-        var bandMap: [String: Band] = [:]
-        func add(_ id: String, _ label: String, _ col: Int, _ s: Double, _ cat: ActivityCategory?) {
-            var n = nodes[id] ?? Node(id: id, label: label, column: col, seconds: 0, category: cat)
-            n.seconds += s
-            nodes[id] = n
-        }
-        func band(_ a: String, _ b: String, _ s: Double, _ c: ActivityCategory) {
-            let k = a + "→" + b
-            bandMap[k, default: Band(from: a, to: b, seconds: 0, category: c)].seconds += s
-        }
-        for f in e.flows where f.seconds > 0 {
-            let cat = "c:" + f.category.rawValue
-            let app = topApps.contains(f.app) ? "a:" + f.app : "a:Other apps"
-            add(cat, f.category.label, 0, f.seconds, f.category)
-            add(app, String(app.dropFirst(2)), 1, f.seconds, nil)
-            band(cat, app, f.seconds, f.category)
-            if let site = f.site {
-                let sid = topSites.contains(site) ? "s:" + site : "s:Other sites"
-                add(sid, String(sid.dropFirst(2)), 2, f.seconds, f.category)
-                band(app, sid, f.seconds, f.category)
-            }
-        }
-        // Stack each column top to bottom, largest first, with gaps.
-        let colX: [CGFloat] = [0, size.width * 0.42, size.width - 12]
-        for col in 0...2 {
-            let ids = nodes.values.filter { $0.column == col }.sorted { $0.seconds > $1.seconds }.map(\.id)
-            let total = ids.reduce(0) { $0 + nodes[$1]!.seconds }
-            let gap: CGFloat = col == 0 ? 18 : 6
-            let usable = max(10, size.height - gap * CGFloat(max(0, ids.count - 1)))
-            var y: CGFloat = 0
-            for id in ids {
-                let h = max(3, usable * CGFloat(nodes[id]!.seconds / max(1, total)))
-                nodes[id]!.rect = CGRect(x: colX[col], y: y, width: 12, height: h)
-                y += h + gap
-            }
-        }
-        return (nodes, bandMap.values.sorted { $0.seconds > $1.seconds })
-    }
+    @Binding var hover: String?
+    @StateObject private var cache = FlowCache()
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         GeometryReader { geo in
-            let plot = CGSize(width: geo.size.width - 300, height: geo.size.height)
-            let (nodes, bands) = layout(size: plot)
-            let focus = hover ?? selected.map { k in nodes.keys.first { $0.hasSuffix(":" + k) } ?? k }
-            let linked: Set<String> = focus.map { f in Set(bands.filter { $0.from == f || $0.to == f }.flatMap { [$0.from, $0.to] }).union([f]) } ?? []
-            ZStack(alignment: .topLeading) {
-                Canvas { ctx, _ in
-                    var outOffset: [String: CGFloat] = [:], inOffset: [String: CGFloat] = [:]
-                    for b in bands {
-                        guard let a = nodes[b.from], let z = nodes[b.to] else { continue }
-                        let ha = a.rect.height * CGFloat(b.seconds / max(1, a.seconds))
-                        let hz = z.rect.height * CGFloat(b.seconds / max(1, z.seconds))
-                        let y0 = a.rect.minY + (outOffset[b.from] ?? 0), y1 = z.rect.minY + (inOffset[b.to] ?? 0)
-                        outOffset[b.from, default: 0] += ha; inOffset[b.to, default: 0] += hz
-                        let x0 = a.rect.maxX, x1 = z.rect.minX, mid = (x0 + x1) / 2
-                        var p = Path()
-                        p.move(to: CGPoint(x: x0, y: y0))
-                        p.addCurve(to: CGPoint(x: x1, y: y1), control1: CGPoint(x: mid, y: y0), control2: CGPoint(x: mid, y: y1))
-                        p.addLine(to: CGPoint(x: x1, y: y1 + hz))
-                        p.addCurve(to: CGPoint(x: x0, y: y0 + ha), control1: CGPoint(x: mid, y: y1 + hz), control2: CGPoint(x: mid, y: y0 + ha))
-                        p.closeSubpath()
-                        let lit = focus == nil || (b.from == focus || b.to == focus)
-                        let color = b.category.color
-                        ctx.fill(p, with: .color(color.opacity(lit ? 0.32 : 0.05)))
-                        // A thin centre line gives the arcs their drawn, poster-like look.
-                        var line = Path()
-                        let c0 = y0 + ha / 2, c1 = y1 + hz / 2
-                        line.move(to: CGPoint(x: x0, y: c0))
-                        line.addCurve(to: CGPoint(x: x1, y: c1), control1: CGPoint(x: mid, y: c0), control2: CGPoint(x: mid, y: c1))
-                        ctx.stroke(line, with: .color(color.opacity(lit ? 0.9 : 0.12)), lineWidth: lit && focus != nil ? 1.4 : 0.8)
-                    }
-                    for n in nodes.values {
-                        let on = focus == nil || linked.contains(n.id)
-                        ctx.fill(Path(n.rect), with: .color((n.category?.color ?? Theme.ink).opacity(on ? 1 : 0.2)))
-                    }
+            let layout = cache.layout(e, geo.size)
+            let focusID = hover ?? selected.flatMap { key in layout.nodes.first { $0.objectKey == key }?.id }
+            let lit = focusID.map { layout.neighbourhood(of: $0) }
+            Canvas { ctx, _ in
+                draw(layout, in: &ctx, focus: focusID, lit: lit)
+            }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let p):
+                    let id = layout.node(at: p)?.id
+                    if id != hover { hover = id }
+                case .ended:
+                    if hover != nil { hover = nil }
                 }
-                .frame(width: plot.width, height: plot.height)
-                // Labels (right of each node; sites column labelled on the far right).
-                ForEach(Array(nodes.values), id: \.id) { n in
-                    let on = focus == nil || linked.contains(n.id)
-                    HStack(spacing: 6) {
-                        Text(n.column == 0 ? n.label.uppercased() : n.label)
-                            .font(n.column == 0 ? Theme.label(10) : .system(size: 11.5, weight: n.id == focus ? .semibold : .regular))
-                            .lineLimit(1)
-                        Text(DurationText.short(n.seconds)).font(Theme.label(9)).foregroundStyle(.secondary)
-                    }
-                    .opacity(on ? 1 : 0.3)
-                    .fixedSize()
-                    .position(x: n.rect.maxX + 8, y: n.rect.midY)
-                    .offset(x: labelWidthGuess(n) / 2)
-                    .onHover { inside in hover = inside ? n.id : (hover == n.id ? nil : hover) }
-                    .onTapGesture { if n.column > 0, !n.label.hasPrefix("Other") { selected = n.label } }
+            }
+            .gesture(SpatialTapGesture().onEnded { v in
+                guard let n = layout.node(at: v.location), let key = n.objectKey else { selected = nil; return }
+                selected = selected == key ? nil : key
+            })
+            .overlay {
+                if layout.nodes.isEmpty {
+                    Text("Nothing tracked in this range yet.").font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
     }
 
-    private func labelWidthGuess(_ n: Node) -> CGFloat { CGFloat(min(26, n.label.count + 7)) * 6.6 }
+    private func draw(_ l: FlowLayout, in ctx: inout GraphicsContext, focus: String?, lit: Set<String>?) {
+        // Bands first, dimmed ones underneath highlighted ones.
+        let ordered = l.bands.sorted { a, b in
+            let la = focus == nil || a.from == focus || a.to == focus
+            let lb = focus == nil || b.from == focus || b.to == focus
+            return la == lb ? a.seconds > b.seconds : !la
+        }
+        for b in ordered {
+            let on = focus == nil || b.from == focus || b.to == focus
+            let mid = (b.x0 + b.x1) / 2
+            var p = Path()
+            p.move(to: CGPoint(x: b.x0, y: b.y0))
+            p.addCurve(to: CGPoint(x: b.x1, y: b.y1), control1: CGPoint(x: mid, y: b.y0), control2: CGPoint(x: mid, y: b.y1))
+            p.addLine(to: CGPoint(x: b.x1, y: b.y1 + b.h1))
+            p.addCurve(to: CGPoint(x: b.x0, y: b.y0 + b.h0), control1: CGPoint(x: mid, y: b.y1 + b.h1), control2: CGPoint(x: mid, y: b.y0 + b.h0))
+            p.closeSubpath()
+            let color = b.category.color
+            ctx.fill(p, with: .color(color.opacity(on ? (focus == nil ? 0.26 : 0.5) : 0.07)))
+            if on {
+                var line = Path()
+                let c0 = b.y0 + b.h0 / 2, c1 = b.y1 + b.h1 / 2
+                line.move(to: CGPoint(x: b.x0, y: c0))
+                line.addCurve(to: CGPoint(x: b.x1, y: c1), control1: CGPoint(x: mid, y: c0), control2: CGPoint(x: mid, y: c1))
+                ctx.stroke(line, with: .color(color.opacity(0.9)), lineWidth: focus == nil ? 0.7 : 1.2)
+            }
+        }
+        // Nodes and labels.
+        for n in l.nodes {
+            let on = lit?.contains(n.id) ?? true
+            let isFocus = n.id == focus
+            ctx.fill(Path(n.rect), with: .color(n.category.color.opacity(on ? 1 : 0.25)))
+            if isFocus {
+                ctx.stroke(Path(n.rect.insetBy(dx: -2, dy: -1)), with: .color(Theme.accent), lineWidth: 1.5)
+            }
+            let name = Text(n.column == 0 ? n.label.uppercased() : n.label)
+                .font(n.column == 0 ? Theme.label(10) : .system(size: 11.5, weight: isFocus ? .semibold : .regular))
+                .foregroundColor(on ? Theme.ink : Theme.ink.opacity(0.3))
+            let time = Text("  " + DurationText.short(n.seconds)).font(Theme.label(9)).foregroundColor(.secondary.opacity(on ? 1 : 0.4))
+            let label = name + time
+            switch n.column {
+            case 0:
+                ctx.draw(label, at: CGPoint(x: n.rect.minX - 8, y: n.rect.midY), anchor: .trailing)
+            case 1:
+                // App labels sit over the bands: give them a paper backing so they stay readable.
+                let resolved = ctx.resolve(label)
+                let sz = resolved.measure(in: CGSize(width: 220, height: 20))
+                let box = CGRect(x: n.rect.maxX + 4, y: n.rect.midY - sz.height / 2 - 1, width: sz.width + 8, height: sz.height + 2)
+                ctx.fill(Path(roundedRect: box, cornerRadius: 3), with: .color(Theme.cardBackground.opacity(0.85)))
+                ctx.draw(resolved, at: CGPoint(x: box.minX + 4, y: n.rect.midY), anchor: .leading)
+            default:
+                ctx.draw(label, at: CGPoint(x: n.rect.maxX + 8, y: n.rect.midY), anchor: .leading)
+            }
+        }
+    }
 }
 
 // MARK: - Inspector

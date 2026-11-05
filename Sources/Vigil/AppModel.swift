@@ -301,6 +301,7 @@ final class AppModel: ObservableObject {
         if blockReason != blocker.reason { blockReason = blocker.reason }
 
         if now.timeIntervalSince(lastSummaryRefresh) >= 30 { refreshSummary() }
+        if section == .engine && DashboardWindowController.shared.isVisible { refreshEngine() }   // throttled to once a minute
         if !trackingPaused && !tracker.systemAway { refreshTabs(now: now) }
         checkDailyReport(now: now)
         runMaintenanceIfNeeded(now: now)
