@@ -9,7 +9,13 @@ public enum VigilPaths {
     }
 
     public static var databaseURL: URL {
-        supportDirectory.appendingPathComponent("vigil.sqlite")
+        #if DEBUG
+        // Debug builds only: tests point this at a throwaway database. Release builds ignore it.
+        if let override = ProcessInfo.processInfo.environment["VIGIL_DEBUG_DATABASE"], !override.isEmpty {
+            return URL(fileURLWithPath: override)
+        }
+        #endif
+        return supportDirectory.appendingPathComponent("vigil.sqlite")
     }
 
     public static var reportsDirectory: URL {

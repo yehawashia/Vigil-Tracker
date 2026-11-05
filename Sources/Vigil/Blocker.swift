@@ -44,12 +44,17 @@ final class Blocker {
 
     var isBlockingActive: Bool { sessionActive || !exceededLimits.isEmpty }
 
-    func update(focus: FocusSession?, schedule: BlockSchedule?, now: Date) {
+    func update(focus: FocusSession?, timeBlock: TimetableItem? = nil, schedule: BlockSchedule?, now: Date) {
         if let focus {
             sessionActive = true
             reason = focus.label.map { "Focus session: \($0)" } ?? "Focus session"
             until = focus.end
             locked = focus.locked
+        } else if let timeBlock {
+            sessionActive = true
+            reason = "Time block: \(timeBlock.title)"
+            until = timeBlock.end
+            locked = false
         } else if let schedule {
             sessionActive = true
             reason = schedule.label.map { "Scheduled block: \($0)" } ?? "Scheduled block"

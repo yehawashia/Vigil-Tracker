@@ -150,6 +150,26 @@ enum DemoData {
         try store.addBlock(kind: .app, pattern: "com.valvesoftware.steam")
         try store.addSchedule(weekdays: [2, 3, 4, 5, 6], startMinute: 9 * 60, endMinute: 12 * 60, label: "Morning deep work")
         try store.addSchedule(weekdays: [1, 2, 3, 4, 5, 6, 7], startMinute: 22 * 60 + 30, endMinute: 7 * 60, label: "Wind down")
+
+        // A sample week in the timetable, and one change suggested by an agent.
+        let week = Calendar.current.dateInterval(of: .weekOfYear, for: now)?.start ?? cal.startOfDay(for: now)
+        let plan: [(Int, Double, Double, String, TimetableItem.Kind)] = [
+            (0, 9, 11, "Algorithms lecture", .task), (0, 14, 16, "Problem set 4", .block),
+            (1, 9.5, 12, "Deep work: thesis", .block), (1, 13, 14, "Gym", .task), (1, 16, 17.5, "Reading group", .task),
+            (2, 10, 12, "Essay outline", .block), (2, 15, 16, "Office hours", .task),
+            (3, 9, 10.5, "Statistics", .task), (3, 11, 13, "Deep work: thesis", .block), (3, 18, 19, "Call home", .task),
+            (4, 10, 12.5, "Lab report", .block), (4, 14, 15, "Weekly review", .task),
+            (5, 11, 12, "Run", .task),
+        ]
+        for (dayIndex, from, to, title, kind) in plan {
+            let day = week.addingTimeInterval(Double(dayIndex) * 86400)
+            let item = TimetableItem(title: title, start: day.addingTimeInterval(from * 3600), end: day.addingTimeInterval(to * 3600), kind: kind)
+            try store.applyTimetableChange(.create, item: item, author: dayIndex == 3 ? "device:demo" : "mac")
+        }
+        let saturday = week.addingTimeInterval(5 * 86400)
+        try store.proposeTimetableChange(.create, item: TimetableItem(title: "Exam revision", start: saturday.addingTimeInterval(14 * 3600),
+                                                                     end: saturday.addingTimeInterval(16 * 3600), kind: .block),
+                                         note: "Your statistics exam is on Monday and Saturday afternoon is free.")
     }
 }
 
@@ -169,7 +189,7 @@ final class ScreenshotRunner {
     func run() {
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         let sections: [(DashboardSection, String)] = [
-            (.today, "today"), (.trends, "trends"), (.history, "history"), (.focus, "focus"),
+            (.today, "today"), (.trends, "trends"), (.timetable, "timetable"), (.history, "history"), (.focus, "focus"),
             (.blocking, "blocking"), (.categories, "categories"), (.agents, "agents"),
         ]
         for (section, name) in sections {
@@ -205,7 +225,7 @@ final class ScreenshotRunner {
         model.section = section
         model.viewingDay = DayKey.today
         // Trends is a long page: capture all of it.
-        let height: CGFloat = section == .trends ? 1640 : 820
+        let height: CGFloat = section == .trends ? 1640 : section == .timetable ? 1180 : 820
         let root = DashboardView()
             .environmentObject(model)
             .frame(width: 1280, height: height)

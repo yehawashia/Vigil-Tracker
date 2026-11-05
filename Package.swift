@@ -23,5 +23,10 @@ let package = Package(
             dependencies: ["VigilCore"],
             path: "Sources/VigilMCP"
         ),
+        .testTarget(
+            name: "VigilCoreTests",
+            dependencies: ["VigilCore"],
+            path: "Tests/VigilCoreTests"
+        ),
     ]
 )

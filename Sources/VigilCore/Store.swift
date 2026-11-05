@@ -89,10 +89,12 @@ public final class VigilStore {
             value TEXT
         );
         """)
+        try db.exec(VigilStore.timetableSchema)
+        try db.exec(VigilStore.devicesSchema)
     }
 
     /// Bump when the schema changes; add a step to `upgradeSchema` for each version.
-    static let schemaVersion = 2
+    static let schemaVersion = 3
 
     private func upgradeSchema() throws {
         let current = (try? db.query("PRAGMA user_version"))?.first?.int("user_version") ?? 0

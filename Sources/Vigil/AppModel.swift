@@ -4,13 +4,14 @@ import UniformTypeIdentifiers
 import VigilCore
 
 enum DashboardSection: String, CaseIterable, Identifiable {
-    case today, trends, history, focus, blocking, categories, agents, settings
+    case today, trends, timetable, history, focus, blocking, categories, agents, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .today: return "Today"
         case .trends: return "Trends"
+        case .timetable: return "Timetable"
         case .history: return "History"
         case .focus: return "Focus"
         case .blocking: return "Blocking"
@@ -24,6 +25,7 @@ enum DashboardSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: return "sun.max"
         case .trends: return "chart.xyaxis.line"
+        case .timetable: return "calendar"
         case .history: return "chart.bar.xaxis"
         case .focus: return "timer"
         case .blocking: return "hand.raised"
@@ -93,6 +95,12 @@ final class AppModel: ObservableObject {
     @Published var limits: [DailyLimit] = []
     @Published var schedules: [BlockSchedule] = []
     @Published var rules: [CategoryRule] = []
+    /// Agent changes waiting for approval.
+    @Published var proposals: [TimetableRevision] = []
+    /// The time block running now, if any.
+    @Published var activeTimeBlock: TimetableItem?
+    /// Bumped whenever the timetable changes, so open views reload.
+    @Published var timetableVersion = 0
 
     // Settings
     @Published var trackingPaused = false
@@ -123,6 +131,7 @@ final class AppModel: ObservableObject {
     // Caches so the 1 s heartbeat does no database reads in the common case.
     private var lastDataVersion = 0
     private var pendingSessions: [FocusSession] = []
+    private var timeBlocks: [TimetableItem] = []
     private var lastReportDay: String?
     private var lastMaintenanceDay: String?
     private var pendingTick: DispatchWorkItem?
@@ -252,12 +261,14 @@ final class AppModel: ObservableObject {
 
         let session = pendingSessions.first { $0.isActive(at: now) }
         let schedule = schedules.first { $0.isActive(at: now) }
+        let block = timeBlocks.first { $0.isActive(at: now) }
+        if activeTimeBlock != block { activeTimeBlock = block }
         handleFocusTransitions(session)
         if focus != session { focus = session }
         if activeSchedule != schedule { activeSchedule = schedule }
 
         blocker.closeTabsInstead = closeTabsInstead
-        blocker.update(focus: session, schedule: schedule, now: now)
+        blocker.update(focus: session, timeBlock: block, schedule: schedule, now: now)
         blocker.enforce(snapshot: snapshot, now: now)
         if blockingActive != blocker.isBlockingActive { blockingActive = blocker.isBlockingActive }
         if blockReason != blocker.reason { blockReason = blocker.reason }
@@ -371,6 +382,52 @@ final class AppModel: ObservableObject {
         if newBlocklist != blocklist || newLimits != limits { blocklist = newBlocklist; limits = newLimits; blocker.reload() }
         if newSchedules != schedules { schedules = newSchedules }
         if newRules != rules { rules = newRules; tracker.categorizer = Categorizer(rules: newRules) }
+        reloadTimetable()
+    }
+
+    // MARK: - Timetable
+
+    private func reloadTimetable() {
+        let blocks = store.upcomingTimeBlocks()
+        let pending = store.pendingProposals()
+        if blocks != timeBlocks || pending != proposals {
+            if pending.count > proposals.count, let newest = pending.last {
+                notifier.send(title: "Your agent suggested a timetable change", body: newest.summary, identifier: "proposal-\(newest.id)")
+            }
+            timeBlocks = blocks
+            proposals = pending
+        }
+        timetableVersion &+= 1
+    }
+
+    /// Your own edits on the Mac apply immediately and are recorded in history.
+    func saveTimetableItem(_ item: TimetableItem, isNew: Bool) {
+        do {
+            try store.applyTimetableChange(isNew ? .create : .update, item: item, author: "mac")
+        } catch {
+            lastMessage = "\(error)"
+        }
+        reloadTimetable()
+    }
+
+    func deleteTimetableItem(_ item: TimetableItem) {
+        try? store.applyTimetableChange(.delete, item: item, author: "mac")
+        reloadTimetable()
+    }
+
+    func approve(_ proposal: TimetableRevision) {
+        do { try store.approveProposal(id: proposal.id); lastMessage = "Approved: \(proposal.summary)" } catch { lastMessage = "\(error)" }
+        reloadTimetable()
+    }
+
+    func reject(_ proposal: TimetableRevision) {
+        store.rejectProposal(id: proposal.id)
+        reloadTimetable()
+    }
+
+    func revert(_ revision: TimetableRevision) {
+        do { try store.revert(revisionID: revision.id, author: "mac"); lastMessage = "Reverted." } catch { lastMessage = "\(error)" }
+        reloadTimetable()
     }
 
     // MARK: - Settings

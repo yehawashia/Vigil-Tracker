@@ -201,12 +201,52 @@ let tools: [[String: Any]] = [
          ["kind": kindProp, "pattern": patternProp,
           "category": ["type": "string", "enum": ["productive", "neutral", "distracting"]] as JSON],
          required: ["kind", "pattern", "category"], readOnly: false),
+    tool("get_timetable", "The user's timetable (tasks and time blocks) between two dates, plus any changes still waiting for the user's approval. Time blocks turn on blocking while they run.",
+         ["start_date": dateProp, "end_date": ["type": "string", "description": "Same formats as start_date. Defaults to 7 days after start_date."] as JSON]),
+    tool("propose_timetable_change", "Propose adding, changing or removing a timetable item. Nothing changes until the user approves it in Vigil (on their Mac or a paired iPhone/iPad), so tell the user it's waiting for approval. Times are local, as \"YYYY-MM-DD HH:MM\" or ISO 8601.",
+         ["op": ["type": "string", "enum": ["add", "update", "delete"]] as JSON,
+          "id": ["type": "string", "description": "Item id (from get_timetable). Required for update and delete."] as JSON,
+          "title": ["type": "string", "description": "Required for add"] as JSON,
+          "start": ["type": "string", "description": "Start time. Required for add"] as JSON,
+          "end": ["type": "string", "description": "End time. Required for add"] as JSON,
+          "kind": ["type": "string", "enum": ["task", "block"], "description": "\"block\" turns blocking on during the item. Default task"] as JSON,
+          "notes": ["type": "string"] as JSON,
+          "done": ["type": "boolean"] as JSON,
+          "reason": ["type": "string", "description": "One sentence shown to the user when they approve or reject"] as JSON],
+         required: ["op"], readOnly: false),
+    tool("get_timetable_history", "Version history of the timetable: every change, who made it (user, agent or a paired device) and whether it was applied, proposed or rejected.",
+         ["item_id": ["type": "string", "description": "Only this item's history"] as JSON,
+          "limit": ["type": "integer", "description": "Default 50"] as JSON]),
+    tool("get_devices", "iPhones and iPads paired with this Mac, when each was last seen, and the time they reported today (Safari websites to the second; app groups in 15-minute steps)."),
 ]
+
+// MARK: - Timetable helpers
+
+let localFormats: [DateFormatter] = ["yyyy-MM-dd HH:mm", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss"].map {
+    let f = DateFormatter(); f.dateFormat = $0; f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; return f
+}
+
+func parseTime(_ text: String?, field: String) throws -> Date? {
+    guard let text = text?.trimmingCharacters(in: .whitespaces), !text.isEmpty else { return nil }
+    if let d = ISO8601DateFormatter().date(from: text) { return d }
+    for f in localFormats { if let d = f.date(from: text) { return d } }
+    throw ToolError(message: "'\(field)' must look like \"2026-11-06 14:30\" (local time) or ISO 8601")
+}
+
+func itemJSON(_ i: TimetableItem) -> JSON {
+    ["id": i.id, "title": i.title, "notes": nn(i.notes), "start": ts(i.start), "end": ts(i.end),
+     "kind": i.kind.rawValue, "done": i.done, "minutes": Int(i.duration / 60)]
+}
+
+func revisionJSON(_ r: TimetableRevision) -> JSON {
+    ["revision": r.id, "item_id": r.itemID, "op": r.op.rawValue, "status": r.status.rawValue,
+     "author": r.author, "summary": r.summary, "note": nn(r.note), "time": ts(r.time)]
+}
 
 // MARK: - Tool handlers
 
 let writeTools: Set<String> = ["start_focus_session", "stop_focus_session", "add_to_blocklist",
-                                "remove_from_blocklist", "set_daily_limit", "set_category"]
+                                "remove_from_blocklist", "set_daily_limit", "set_category", "propose_timetable_change"]
 
 /// Read-only if VIGIL_MCP_READONLY=1 is set in the agent's config, or "Read-only for agents" is on in the app.
 func isReadOnly() -> Bool {
@@ -359,6 +399,73 @@ func callTool(_ name: String, _ args: [String: Any]) throws -> ToolResult {
         }
         try st.setRule(kind: k, pattern: p, category: c)
         return .json(["set": true, "kind": k.rawValue, "pattern": p, "category": c.rawValue])
+
+    case "get_timetable":
+        let startDay = DayKey.resolve(args.str("start_date"))
+        let endDay = args.str("end_date").map { DayKey.resolve($0) } ?? DayKey.offset(startDay, days: 7)
+        guard let from = DayKey.date(from: startDay), let toStart = DayKey.date(from: endDay), toStart >= from else {
+            throw ToolError(message: "Invalid date range")
+        }
+        let to = toStart.addingTimeInterval(86400)
+        guard to.timeIntervalSince(from) <= 92 * 86400 else { throw ToolError(message: "Ask for at most 92 days at a time") }
+        return .json(["from": startDay, "to": endDay,
+                      "items": st.timetable(from: from, to: to).map(itemJSON),
+                      "awaiting_approval": st.pendingProposals().map(revisionJSON)])
+
+    case "propose_timetable_change":
+        let op = args.str("op")?.lowercased() ?? ""
+        let reason = args.str("reason")
+        switch op {
+        case "add":
+            guard let title = args.str("title"), let start = try parseTime(args.str("start"), field: "start"),
+                  let end = try parseTime(args.str("end"), field: "end") else {
+                throw ToolError(message: "'add' needs title, start and end")
+            }
+            let kind = TimetableItem.Kind(rawValue: args.str("kind") ?? "task") ?? .task
+            let item = TimetableItem(title: title, notes: args.str("notes"), start: start, end: end, kind: kind)
+            do {
+                let rev = try st.proposeTimetableChange(.create, item: item, note: reason)
+                return .json(["proposed": true, "revision": rev, "item": itemJSON(item),
+                              "note": "Waiting for the user's approval in Vigil. Nothing has changed yet."])
+            } catch let e as TimetableError { throw ToolError(message: e.description) }
+        case "update", "delete":
+            guard let id = args.str("id"), var item = st.timetableItem(id: id) else {
+                throw ToolError(message: "Unknown 'id'. Call get_timetable to find item ids.")
+            }
+            if op == "update" {
+                if let t = args.str("title") { item.title = t }
+                if let n = args.str("notes") { item.notes = n }
+                if let s = try parseTime(args.str("start"), field: "start") { item.start = s }
+                if let e = try parseTime(args.str("end"), field: "end") { item.end = e }
+                if let k = args.str("kind") {
+                    guard let kind = TimetableItem.Kind(rawValue: k) else { throw ToolError(message: "'kind' must be task or block") }
+                    item.kind = kind
+                }
+                if let d = args.bool("done") { item.done = d }
+            }
+            do {
+                let rev = try st.proposeTimetableChange(op == "update" ? .update : .delete, item: item, note: reason)
+                return .json(["proposed": true, "revision": rev, "item": itemJSON(item),
+                              "note": "Waiting for the user's approval in Vigil. Nothing has changed yet."])
+            } catch let e as TimetableError { throw ToolError(message: e.description) }
+        default:
+            throw ToolError(message: "'op' must be add, update or delete")
+        }
+
+    case "get_timetable_history":
+        let limit = min(500, max(1, args.int("limit") ?? 50))
+        return .json(["history": st.timetableHistory(itemID: args.str("item_id"), limit: limit).map(revisionJSON)])
+
+    case "get_devices":
+        let today = DayKey.today
+        return .json(["devices": st.devices().map { d -> JSON in
+            let usage = st.deviceUsage(deviceID: d.id, sinceDay: today)
+            return ["id": d.id, "name": d.name, "model": nn(d.model), "platform": nn(d.platform),
+                    "paired_at": ts(d.pairedAt), "last_seen": ts(d.lastSeen), "online": d.isOnline(),
+                    "today": usage.prefix(20).map { u -> JSON in
+                        ["kind": u.kind.rawValue, "name": u.key, "minutes": minutes(u.seconds),
+                         "approximate": u.precision > 60] }]
+        }])
 
     default:
         throw ToolError(message: "Unknown tool: \(name)")

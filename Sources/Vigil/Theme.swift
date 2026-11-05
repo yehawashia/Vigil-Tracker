@@ -21,6 +21,8 @@ enum Theme {
     static let hairline = dynamic(day: 0x161616, night: 0xC9B8D9, nightAlpha: 0.12, dayAlpha: 0.09)
 
     static let accent = dynamic(day: 0xF26B2A, night: 0xF2B166)
+    /// Text drawn on top of the accent colour.
+    static let onAccent = dynamic(day: 0xFFFFFF, night: 0x1E1620)
     static let productive = dynamic(day: 0x1D1D1D, night: 0xF2B166)
     static let neutral = dynamic(day: 0xA29D95, night: 0x8C7A9E)
     static let distracting = dynamic(day: 0xF26B2A, night: 0xE8735A)
