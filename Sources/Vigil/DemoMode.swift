@@ -172,6 +172,13 @@ enum DemoData {
                                                                      end: saturday.addingTimeInterval(16 * 3600), kind: .block),
                                          note: "Your statistics exam is on Monday and Saturday afternoon is free.")
 
+        // A few unscheduled tasks for the task panel.
+        for (title, minutes, focus) in [("Revise statistics chapter 4", 90, true), ("Email supervisor about draft", 15, false),
+                                        ("Read Kahneman, chapters 3–5", 60, false)] {
+            try store.applyTimetableChange(.create, item: TimetableItem(title: title, start: now, end: now, kind: .todo,
+                                                                         estimate: minutes, wantsFocus: focus), author: "mac")
+        }
+
         // Two sample paired devices with a little reported usage.
         let phone = PairedDevice(id: "demo-phone", name: "Sam's iPhone", model: "iPhone 16 Pro", platform: "iOS",
                                  pairedAt: now.addingTimeInterval(-9 * 86400), lastSeen: now.addingTimeInterval(-40), revoked: false)

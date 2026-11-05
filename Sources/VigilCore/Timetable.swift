@@ -2,7 +2,16 @@ import Foundation
 
 /// A timetable entry. `kind == .block` turns blocking on for its duration (time blocking).
 public struct TimetableItem: Codable, Hashable, Identifiable {
-    public enum Kind: String, Codable, CaseIterable { case task, block }
+    /// task = scheduled task; block = scheduled time block that turns blocking on;
+    /// todo = unscheduled task waiting in the task panel (its start/end are ignored).
+    public enum Kind: String, Codable, CaseIterable {
+        case task, block, todo
+
+        /// Unknown kinds from a newer app version decode as a plain task instead of failing.
+        public init(from decoder: Decoder) throws {
+            self = Kind(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .task
+        }
+    }
 
     public var id: String
     public var title: String
@@ -11,11 +20,24 @@ public struct TimetableItem: Codable, Hashable, Identifiable {
     public var end: Date
     public var kind: Kind
     public var done: Bool
+    /// For to-dos: how long it should take (minutes), used when it's dropped onto the calendar.
+    public var estimate: Int?
+    /// For to-dos: schedule it as a focus block (blocking on) rather than a plain task.
+    public var wantsFocus: Bool?
 
     public init(id: String = UUID().uuidString, title: String, notes: String? = nil, start: Date, end: Date,
-                kind: Kind = .task, done: Bool = false) {
+                kind: Kind = .task, done: Bool = false, estimate: Int? = nil, wantsFocus: Bool? = nil) {
         self.id = id; self.title = title; self.notes = notes; self.start = start; self.end = end
-        self.kind = kind; self.done = done
+        self.kind = kind; self.done = done; self.estimate = estimate; self.wantsFocus = wantsFocus
+    }
+
+    /// A to-do turned into a scheduled item at `start`: a focus block if it asked for one.
+    public func scheduled(at start: Date) -> TimetableItem {
+        var s = self
+        s.kind = wantsFocus == true ? .block : .task
+        s.start = start
+        s.end = start.addingTimeInterval(Double(max(5, min(24 * 60, estimate ?? 60))) * 60)
+        return s
     }
 
     public func isActive(at date: Date = Date()) -> Bool { start <= date && date < end }
@@ -28,6 +50,13 @@ public struct TimetableItem: Codable, Hashable, Identifiable {
         item.notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         guard !item.title.isEmpty else { throw TimetableError.invalid("A title is required.") }
         guard item.title.count <= 200, (item.notes?.count ?? 0) <= 4000 else { throw TimetableError.invalid("Title or notes too long.") }
+        if item.kind == .todo {
+            // Unscheduled: no times to check. Normalise them so they never show up on the calendar.
+            item.start = Date(timeIntervalSince1970: (start.timeIntervalSince1970).rounded())
+            item.end = item.start
+            guard UUID(uuidString: id) != nil else { throw TimetableError.invalid("Bad item id.") }
+            return item
+        }
         guard end > start else { throw TimetableError.invalid("End must be after start.") }
         guard duration <= 24 * 3600 else { throw TimetableError.invalid("Items can be at most 24 hours long.") }
         let year: TimeInterval = 366 * 86400
@@ -91,11 +120,14 @@ public struct TimetableRevision: Codable, Hashable, Identifiable {
         let t = DateFormatter(); t.dateFormat = "HH:mm"
         func when(_ i: TimetableItem) -> String { "\(f.string(from: i.start))–\(t.string(from: i.end))" }
         switch op {
-        case .create: return after.map { "Add \"\($0.title)\" · \(when($0))" } ?? "Add"
+        case .create: return after.map { $0.kind == .todo ? "Add task \"\($0.title)\"" : "Add \"\($0.title)\" · \(when($0))" } ?? "Add"
         case .delete: return before.map { "Remove \"\($0.title)\"" } ?? "Remove"
         case .revert: return "Revert \"\(title)\""
         case .update:
             guard let b = before, let a = after else { return "Change" }
+            if b.kind == .todo && a.kind != .todo {
+                return "Schedule \"\(a.title)\" · \(when(a))" + (a.kind == .block ? " · blocking on" : "")
+            }
             var parts: [String] = []
             if a.title != b.title { parts.append("rename to \"\(a.title)\"") }
             if a.start != b.start || a.end != b.end { parts.append("move to \(when(a))") }
@@ -122,7 +154,9 @@ extension VigilStore {
         kind TEXT NOT NULL,
         done INTEGER NOT NULL DEFAULT 0,
         deleted INTEGER NOT NULL DEFAULT 0,
-        revision INTEGER NOT NULL DEFAULT 0
+        revision INTEGER NOT NULL DEFAULT 0,
+        estimate INTEGER,
+        wants_focus INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_timetable_start ON timetable_items(start);
     CREATE TABLE IF NOT EXISTS timetable_revisions (
@@ -159,7 +193,8 @@ extension VigilStore {
         guard let id = row.string("id"), let title = row.string("title"), let s = row.double("start"), let e = row.double("end") else { return nil }
         return TimetableItem(id: id, title: title, notes: row.string("notes"),
                              start: Date(timeIntervalSince1970: s), end: Date(timeIntervalSince1970: e),
-                             kind: TimetableItem.Kind(rawValue: row.string("kind") ?? "") ?? .task, done: row.bool("done"))
+                             kind: TimetableItem.Kind(rawValue: row.string("kind") ?? "") ?? .task, done: row.bool("done"),
+                             estimate: row.int("estimate"), wantsFocus: row.int("wants_focus").map { $0 == 1 })
     }
 
     private func revisionFromRow(_ row: Row) -> TimetableRevision? {
@@ -177,8 +212,17 @@ extension VigilStore {
     /// Items overlapping [from, to), earliest first. Deleted items are excluded.
     public func timetable(from: Date, to: Date) -> [TimetableItem] {
         let rows = (try? db.query("""
-            SELECT * FROM timetable_items WHERE deleted = 0 AND start < ? AND end > ? ORDER BY start
+            SELECT * FROM timetable_items WHERE deleted = 0 AND kind != 'todo' AND start < ? AND end > ? ORDER BY start
             """, [to, from])) ?? []
+        return rows.compactMap(itemFromRow)
+    }
+
+    /// Unscheduled tasks in the task panel, open ones first, newest first.
+    public func todos(includeDone: Bool = false) -> [TimetableItem] {
+        let rows = (try? db.query("""
+            SELECT * FROM timetable_items WHERE deleted = 0 AND kind = 'todo' \(includeDone ? "" : "AND done = 0")
+            ORDER BY done, start DESC LIMIT 500
+            """)) ?? []
         return rows.compactMap(itemFromRow)
     }
 
@@ -286,11 +330,13 @@ extension VigilStore {
     private func write(_ item: TimetableItem?, id: String, revision: Int64) throws {
         if let item {
             try db.run("""
-                INSERT INTO timetable_items(id, title, notes, start, end, kind, done, deleted, revision)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+                INSERT INTO timetable_items(id, title, notes, start, end, kind, done, deleted, revision, estimate, wants_focus)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET title = excluded.title, notes = excluded.notes, start = excluded.start,
-                  end = excluded.end, kind = excluded.kind, done = excluded.done, deleted = 0, revision = excluded.revision
-                """, [item.id, item.title, item.notes, item.start, item.end, item.kind.rawValue, item.done ? 1 : 0, revision])
+                  end = excluded.end, kind = excluded.kind, done = excluded.done, deleted = 0, revision = excluded.revision,
+                  estimate = excluded.estimate, wants_focus = excluded.wants_focus
+                """, [item.id, item.title, item.notes, item.start, item.end, item.kind.rawValue, item.done ? 1 : 0, revision,
+                   item.estimate, item.wantsFocus.map { $0 ? 1 : 0 }])
         } else {
             try db.run("UPDATE timetable_items SET deleted = 1, revision = ? WHERE id = ?", [revision, id])
         }

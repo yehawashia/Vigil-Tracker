@@ -28,6 +28,10 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Speak a task and Vigil adds it to your timetable. Audio is processed on this Mac and never stored or sent anywhere.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Vigil turns what you say into timetable items using on-device speech recognition only.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Vigil talks only to iPhones and iPads you pair with it, on your local network, encrypted. It never uses the internet.</string>
     <key>NSBonjourServices</key>

@@ -23,17 +23,22 @@ let package = Package(
             dependencies: ["VigilCore"],
             path: "Sources/VigilSync"
         ),
+        // On-device speech capture for "speak to schedule" (Mac, iPhone, iPad).
+        .target(
+            name: "VigilVoice",
+            path: "Sources/VigilVoice"
+        ),
         // The iPhone/iPad app's screens and sync engine. Platform-neutral so it type-checks on macOS too;
         // the iOS-only shell (camera, Screen Time, Safari extension) lives in iOS/.
         .target(
             name: "VigilMobile",
-            dependencies: ["VigilCore", "VigilSync"],
+            dependencies: ["VigilCore", "VigilSync", "VigilVoice"],
             path: "Sources/VigilMobile"
         ),
         // The menu-bar app: tracking, blocking, dashboard, daily reports, pairing host.
         .executableTarget(
             name: "Vigil",
-            dependencies: ["VigilCore", "VigilSync"],
+            dependencies: ["VigilCore", "VigilSync", "VigilVoice"],
             path: "Sources/Vigil"
         ),
         // stdio MCP server that agents (Claude Desktop, Claude Code, etc.) launch.

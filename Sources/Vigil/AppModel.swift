@@ -109,6 +109,8 @@ final class AppModel: ObservableObject {
     @Published var proposals: [TimetableRevision] = []
     /// The time block running now, if any.
     @Published var activeTimeBlock: TimetableItem?
+    /// Unscheduled tasks (task panel).
+    @Published var todos: [TimetableItem] = []
     /// Bumped whenever the timetable changes, so open views reload.
     @Published var timetableVersion = 0
 
@@ -481,6 +483,8 @@ final class AppModel: ObservableObject {
     private func reloadTimetable() {
         let blocks = store.upcomingTimeBlocks()
         let pending = store.pendingProposals()
+        let newTodos = store.todos()
+        if newTodos != todos { todos = newTodos }
         if blocks != timeBlocks || pending != proposals {
             if pending.count > proposals.count, let newest = pending.last {
                 notifier.send(title: "Your agent suggested a timetable change", body: newest.summary, identifier: "proposal-\(newest.id)")
@@ -499,6 +503,40 @@ final class AppModel: ObservableObject {
             lastMessage = "\(error)"
         }
         reloadTimetable()
+    }
+
+    /// Adds whatever the capture box or the microphone produced (scheduled item or to-do).
+    func addPlanned(_ item: TimetableItem) {
+        saveTimetableItem(item, isNew: true)
+        lastMessage = item.kind == .todo ? "Added \"\(item.title)\" to your tasks."
+            : "Added \"\(item.title)\" \(item.start.formatted(.dateTime.weekday(.abbreviated).hour().minute()))."
+    }
+
+    /// Puts a to-do on the calendar (a focus block if it asked for one).
+    func schedule(_ todo: TimetableItem, at start: Date) {
+        do { try store.applyTimetableChange(.update, item: todo.scheduled(at: start), author: "mac") } catch { lastMessage = "\(error)" }
+        reloadTimetable()
+    }
+
+    func completeTodo(_ todo: TimetableItem) {
+        var t = todo; t.done = true
+        saveTimetableItem(t, isNew: false)
+    }
+
+    /// First free slot today or tomorrow (on the quarter hour, 08:00–22:00) long enough for `minutes`.
+    func nextFreeSlot(minutes: Int, after: Date = Date()) -> Date {
+        let cal = Calendar.current
+        let busy = store.timetable(from: after, to: after.addingTimeInterval(3 * 86400))
+        var t = cal.date(bySetting: .second, value: 0, of: after) ?? after
+        let q = cal.component(.minute, from: t) % 15
+        t = t.addingTimeInterval(Double(q == 0 ? 0 : 15 - q) * 60)
+        for _ in 0..<(4 * 24 * 3) {
+            let end = t.addingTimeInterval(Double(minutes) * 60)
+            let h = cal.component(.hour, from: t), he = cal.component(.hour, from: end)
+            if h >= 8, he <= 22, cal.isDate(t, inSameDayAs: end), !busy.contains(where: { $0.start < end && $0.end > t }) { return t }
+            t = t.addingTimeInterval(15 * 60)
+        }
+        return after
     }
 
     func deleteTimetableItem(_ item: TimetableItem) {

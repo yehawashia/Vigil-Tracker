@@ -94,7 +94,7 @@ public final class VigilStore {
     }
 
     /// Bump when the schema changes; add a step to `upgradeSchema` for each version.
-    static let schemaVersion = 3
+    static let schemaVersion = 4
 
     private func upgradeSchema() throws {
         let current = (try? db.query("PRAGMA user_version"))?.first?.int("user_version") ?? 0
@@ -109,6 +109,11 @@ public final class VigilStore {
                                [Categorizer.sanitize(url: row.string("url"), keepQuery: false), id])
                 }
             }
+        }
+        if current < 4 {
+            // v4: to-do estimates and focus intent. (Fresh databases already have the columns.)
+            _ = try? db.exec("ALTER TABLE timetable_items ADD COLUMN estimate INTEGER")
+            _ = try? db.exec("ALTER TABLE timetable_items ADD COLUMN wants_focus INTEGER")
         }
         try db.exec("PRAGMA user_version = \(VigilStore.schemaVersion);")
     }

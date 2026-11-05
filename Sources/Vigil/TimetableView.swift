@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import VigilCore
 
 /// Week planner. Click an empty slot to add, click an item to edit. Time blocks switch blocking on.
@@ -19,13 +20,19 @@ struct TimetableView: View {
         VStack(alignment: .leading, spacing: 18) {
             header
             if !model.proposals.isEmpty { ProposalsCard() }
-            Card {
-                WeekGrid(weekStart: weekStart, items: items,
-                         pending: model.proposals.compactMap { $0.op == .delete ? nil : $0.after },
-                         onSelect: { editing = TimetableEdit(item: $0, isNew: false) },
-                         onCreate: { start in
-                             editing = TimetableEdit(item: TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600)), isNew: true)
-                         })
+            HStack(alignment: .top, spacing: 16) {
+                TaskPanel().frame(width: 300)
+                Card {
+                    WeekGrid(weekStart: weekStart, items: items,
+                             pending: model.proposals.compactMap { $0.op == .delete ? nil : $0.after },
+                             onSelect: { editing = TimetableEdit(item: $0, isNew: false) },
+                             onCreate: { start in
+                                 editing = TimetableEdit(item: TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600)), isNew: true)
+                             },
+                             onDropTodo: { id, start in
+                                 if let todo = model.todos.first(where: { $0.id == id }) { model.schedule(todo, at: start) }
+                             })
+                }
             }
             historyCard
         }
@@ -145,6 +152,8 @@ private struct WeekGrid: View {
     var pending: [TimetableItem] = []
     var onSelect: (TimetableItem) -> Void
     var onCreate: (Date) -> Void
+    /// A to-do dragged from the task panel, dropped at this time.
+    var onDropTodo: (String, Date) -> Void = { _, _ in }
 
     private let hourHeight: CGFloat = 40
     private let gutter: CGFloat = 46
@@ -190,11 +199,18 @@ private struct WeekGrid: View {
                         .frame(width: geo.size.width - gutter, height: hours * hourHeight)
                         .offset(x: gutter)
                         .gesture(SpatialTapGesture().onEnded { value in
-                            let col = max(0, min(6, Int(value.location.x / colWidth)))
-                            let minutes = Int((value.location.y / hourHeight * 60 / 30).rounded(.down)) * 30
-                            let day = Calendar.current.date(byAdding: .day, value: col, to: weekStart) ?? weekStart
-                            onCreate(day.addingTimeInterval(Double(range.lowerBound * 60 + minutes) * 60))
+                            onCreate(slot(at: value.location, colWidth: colWidth, range: range))
                         })
+                        .onDrop(of: [UTType.plainText], isTargeted: nil) { providers, location in
+                            let when = slot(at: location, colWidth: colWidth, range: range)
+                            guard let provider = providers.first else { return false }
+                            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                                guard let text = obj as? String, text.hasPrefix(TodoDrag.prefix) else { return }
+                                let id = String(text.dropFirst(TodoDrag.prefix.count))
+                                DispatchQueue.main.async { onDropTodo(id, when) }
+                            }
+                            return true
+                        }
                     // Items.
                     ForEach(items) { item in
                         if let frame = frame(for: item, colWidth: colWidth, range: range) {
@@ -225,6 +241,14 @@ private struct WeekGrid: View {
             }
             .frame(height: hours * hourHeight)
         }
+    }
+
+    /// The day and half-hour under a point in the grid.
+    private func slot(at p: CGPoint, colWidth: CGFloat, range: ClosedRange<Int>) -> Date {
+        let col = max(0, min(6, Int(p.x / colWidth)))
+        let minutes = max(0, Int((p.y / hourHeight * 60 / 30).rounded(.down)) * 30)
+        let day = Calendar.current.date(byAdding: .day, value: col, to: weekStart) ?? weekStart
+        return day.addingTimeInterval(Double(range.lowerBound * 60 + minutes) * 60)
     }
 
     private func frame(for item: TimetableItem, colWidth: CGFloat, range: ClosedRange<Int>) -> CGRect? {
