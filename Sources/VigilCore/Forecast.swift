@@ -24,6 +24,13 @@ public struct RhythmPoint: Codable, Hashable, Identifiable {
     public var id: Int { hour }
 }
 
+/// One day's 24 hourly buckets (for the 3D terrain and heatmap).
+public struct DayHours: Codable, Hashable, Identifiable {
+    public var day: String
+    public var hours: [HourBucket]
+    public var id: String { day }
+}
+
 /// A predicted value with an uncertainty band (all in seconds).
 public struct Projection: Codable, Hashable {
     public var expected: Double
@@ -53,6 +60,7 @@ public struct TrendsData: Codable, Hashable {
     public var share: [ActivityCategory: Double]  // last 7 days
     public var top: [UsageItem]                   // last 7 days, apps and sites
     public var notes: [String]                    // plain-language findings
+    public var terrain: [DayHours] = []           // last 28 days, oldest first
     public var computedAt: Date
 
     /// Days with any tracked activity. Forecasts need about a week.
@@ -132,6 +140,10 @@ extension VigilStore {
                               todayFinish: finish, todayProductiveFinish: productiveFinish, week: week,
                               share: share, top: top, notes: [], computedAt: now)
         data.notes = Forecaster.notes(for: data)
+        data.terrain = (0..<28).map { i in
+            let day = DayKey.offset(today, days: i - 27)
+            return DayHours(day: day, hours: hourly[day] ?? (0..<24).map { HourBucket(hour: $0, productive: 0, neutral: 0, distracting: 0) })
+        }
         return data
     }
 }
