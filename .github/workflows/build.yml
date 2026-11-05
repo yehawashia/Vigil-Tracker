@@ -39,3 +39,28 @@ jobs:
           shasum -a 256 build/Vigil-macOS.zip > build/Vigil-macOS.zip.sha256
           gh release create "$GITHUB_REF_NAME" build/Vigil-macOS.zip build/Vigil-macOS.zip.sha256 \
             --title "Vigil $GITHUB_REF_NAME" --generate-notes
+
+  tests:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unit + loopback network tests
+        run: swift test
+
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Build iPhone/iPad app (free spec, unsigned)
+        run: |
+          cd iOS
+          xcodegen --spec project-free.yml
+          xcodebuild -project Vigil.xcodeproj -scheme Vigil -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40; test ${PIPESTATUS[0]} -eq 0
+      - name: Build full app with Screen Time + extensions (unsigned)
+        run: |
+          cd iOS
+          rm -rf Vigil.xcodeproj
+          xcodegen --spec project.yml
+          xcodebuild -project Vigil.xcodeproj -scheme Vigil -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build | tail -40; test ${PIPESTATUS[0]} -eq 0
