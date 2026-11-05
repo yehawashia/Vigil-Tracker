@@ -182,7 +182,7 @@ public final class HostServer {
                             timetable: store.timetable(from: from, to: from.addingTimeInterval(35 * 86400)),
                             proposals: store.pendingProposals(), history: store.timetableHistory(limit: 50),
                             devices: store.devices(), blockedDomains: store.blocklist().filter { $0.kind == .domain }.map(\.pattern),
-                            focus: store.activeFocusSession(now: now))
+                            focus: store.activeFocusSession(now: now), todos: store.todos())
     }
 
     // MARK: Pairing

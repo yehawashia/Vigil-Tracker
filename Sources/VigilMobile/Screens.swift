@@ -2,6 +2,7 @@ import Charts
 import SwiftUI
 import VigilCore
 import VigilSync
+import VigilVoice
 
 private func short(_ s: Double) -> String { DurationText.short(s) }
 private func dayLabel(_ key: String, _ format: String = "EEE d") -> String {
@@ -249,6 +250,7 @@ struct PlanScreen: View {
     var body: some View {
         if let snap = state.snapshot {
             if !snap.proposals.isEmpty { ProposalsCard(state: state, proposals: snap.proposals) }
+            MobileTasks(state: state)
             Button {
                 let start = Calendar.current.nextDate(after: Date(), matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? Date()
                 editing = TimetableEdit(item: TimetableItem(title: "", start: start, end: start.addingTimeInterval(3600)), isNew: true)
@@ -449,5 +451,104 @@ struct MobileDial: View {
             minutes = clamped
             MHaptics.tick()
         }
+    }
+}
+
+// MARK: - Tasks + speak to schedule (iPhone / iPad)
+
+struct MobileTasks: View {
+    @ObservedObject var state: DeviceState
+    @StateObject private var speech = SpeechCapture()
+    @State private var draft = ""
+    @State private var plan: VoicePlan?
+
+    var body: some View {
+        let todos = state.snapshot?.todos ?? []
+        MCard("T", "Tasks", note: "\(todos.count) open") {
+            HStack(spacing: 8) {
+                TextField(speech.listening ? "Listening…" : "Add a task, or hold the mic", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(understand)
+                Button { Task { await speech.toggle() } } label: {
+                    Image(systemName: speech.listening ? "stop.circle.fill" : "mic.circle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(speech.listening ? MTheme.accent : MTheme.ink)
+                }
+                .accessibilityLabel(speech.listening ? "Stop listening" : "Speak a task")
+            }
+            if speech.listening { Text("LISTENING · ON-DEVICE").font(MTheme.label(9)).foregroundStyle(MTheme.accent) }
+            if let p = speech.problem { Text(p).font(.caption).foregroundStyle(MTheme.distracting) }
+            if let p = plan {
+                MobilePlanPreview(plan: Binding(get: { p }, set: { plan = $0 })) { final in
+                    Task { await state.request(.editTimetable(op: .create, item: final.item())) }
+                    MHaptics.success()
+                    plan = nil; draft = ""
+                } onCancel: { plan = nil }
+            }
+            ForEach(todos) { t in
+                HStack(spacing: 10) {
+                    Button {
+                        var done = t; done.done = true
+                        Task { await state.request(.editTimetable(op: .update, item: done)) }
+                    } label: { Image(systemName: "circle").foregroundStyle(.secondary) }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(t.title)
+                        HStack(spacing: 6) {
+                            Text("\(t.estimate ?? 60) MIN").font(MTheme.label(9)).foregroundStyle(.secondary)
+                            if t.wantsFocus == true { Text("FOCUS").font(MTheme.label(9)).foregroundStyle(MTheme.accent) }
+                        }
+                    }
+                    Spacer()
+                    Button("Next slot") {
+                        let busy = state.snapshot?.timetable ?? []
+                        let start = Scheduler.nextFreeSlot(minutes: t.estimate ?? 60, after: Date(), busy: busy)
+                        Task { await state.request(.editTimetable(op: .update, item: t.scheduled(at: start))) }
+                    }
+                    .font(.caption).foregroundStyle(MTheme.accent)
+                }
+            }
+        }
+        .onChange(of: speech.listening) { listening in
+            if !listening, !speech.transcript.isEmpty { draft = speech.transcript; understand() }
+        }
+        .onChange(of: speech.transcript) { text in if speech.listening { draft = text } }
+    }
+
+    private func understand() {
+        plan = VoicePlanner.parse(draft)
+        if plan == nil, !draft.trimmingCharacters(in: .whitespaces).isEmpty {
+            state.message = "Couldn't find a task in that. Try “Gym tomorrow at 7”."
+        }
+    }
+}
+
+struct MobilePlanPreview: View {
+    @Binding var plan: VoicePlan
+    var onAdd: (VoicePlan) -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("UNDERSTOOD").font(MTheme.label(9)).foregroundStyle(MTheme.accent)
+            TextField("Title", text: $plan.title).textFieldStyle(.roundedBorder)
+            if let start = plan.start {
+                let end = plan.end ?? start.addingTimeInterval(Double(plan.minutes ?? 60) * 60)
+                Text("\(start.formatted(.dateTime.weekday(.wide).day().month().hour().minute()))–\(end.formatted(date: .omitted, time: .shortened))")
+                    .font(.callout)
+            } else {
+                Stepper("Takes about \(plan.minutes ?? 60) min", value: Binding(get: { plan.minutes ?? 60 }, set: { plan.minutes = $0 }), in: 15...480, step: 15)
+                Text("No time heard: it goes to your tasks.").font(.caption).foregroundStyle(.secondary)
+            }
+            Toggle("Block distractions during it", isOn: $plan.focus)
+            HStack {
+                Button("Cancel", action: onCancel)
+                Spacer()
+                Button(plan.start == nil ? "Add task" : "Add to timetable") { onAdd(plan) }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(plan.title.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(10)
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(MTheme.accent.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
     }
 }

@@ -523,20 +523,9 @@ final class AppModel: ObservableObject {
         saveTimetableItem(t, isNew: false)
     }
 
-    /// First free slot today or tomorrow (on the quarter hour, 08:00–22:00) long enough for `minutes`.
+    /// First free slot today or tomorrow (quarter hours, 08:00–22:00) long enough for `minutes`.
     func nextFreeSlot(minutes: Int, after: Date = Date()) -> Date {
-        let cal = Calendar.current
-        let busy = store.timetable(from: after, to: after.addingTimeInterval(3 * 86400))
-        var t = cal.date(bySetting: .second, value: 0, of: after) ?? after
-        let q = cal.component(.minute, from: t) % 15
-        t = t.addingTimeInterval(Double(q == 0 ? 0 : 15 - q) * 60)
-        for _ in 0..<(4 * 24 * 3) {
-            let end = t.addingTimeInterval(Double(minutes) * 60)
-            let h = cal.component(.hour, from: t), he = cal.component(.hour, from: end)
-            if h >= 8, he <= 22, cal.isDate(t, inSameDayAs: end), !busy.contains(where: { $0.start < end && $0.end > t }) { return t }
-            t = t.addingTimeInterval(15 * 60)
-        }
-        return after
+        Scheduler.nextFreeSlot(minutes: minutes, after: after, busy: store.timetable(from: after, to: after.addingTimeInterval(3 * 86400)))
     }
 
     func deleteTimetableItem(_ item: TimetableItem) {

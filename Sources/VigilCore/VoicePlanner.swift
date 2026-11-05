@@ -112,3 +112,22 @@ public enum VoicePlanner {
         return VoicePlan(title: String(title.prefix(200)), start: start, end: end, minutes: minutes, focus: focus)
     }
 }
+
+public enum Scheduler {
+    /// First free quarter-hour slot (08:00–22:00, within one day) after `after` that fits `minutes`
+    /// without overlapping `busy`. Looks up to 3 days ahead; falls back to `after`.
+    public static func nextFreeSlot(minutes: Int, after: Date, busy: [TimetableItem], calendar cal: Calendar = .current) -> Date {
+        var t = cal.date(bySetting: .second, value: 0, of: after) ?? after
+        let q = cal.component(.minute, from: t) % 15
+        t = t.addingTimeInterval(Double(q == 0 ? 0 : 15 - q) * 60)
+        let scheduled = busy.filter { $0.kind != .todo }
+        for _ in 0..<(4 * 24 * 3) {
+            let end = t.addingTimeInterval(Double(minutes) * 60)
+            let h = cal.component(.hour, from: t), he = cal.component(.hour, from: end), me = cal.component(.minute, from: end)
+            let fitsDay = h >= 8 && (he < 22 || (he == 22 && me == 0)) && cal.isDate(t, inSameDayAs: end)
+            if fitsDay, !scheduled.contains(where: { $0.start < end && $0.end > t }) { return t }
+            t = t.addingTimeInterval(15 * 60)
+        }
+        return after
+    }
+}

@@ -52,3 +52,18 @@ struct VoicePlannerTests {
         #expect(VoicePlanner.parse("   ", now: now) == nil)
     }
 }
+
+struct SchedulerTests {
+    let cal = Calendar.current
+    func at(_ h: Int, _ m: Int = 0, day: Int = 5) -> Date { cal.date(from: DateComponents(year: 2026, month: 11, day: day, hour: h, minute: m))! }
+
+    @Test func skipsBusyAndRoundsUp() {
+        let busy = [TimetableItem(title: "A", start: at(10), end: at(11, 30))]
+        #expect(Scheduler.nextFreeSlot(minutes: 60, after: at(9, 40), busy: busy) == at(11, 30))
+        #expect(Scheduler.nextFreeSlot(minutes: 15, after: at(9, 40), busy: busy) == at(9, 45))
+    }
+
+    @Test func rollsToNextMorning() {
+        #expect(Scheduler.nextFreeSlot(minutes: 90, after: at(21, 10), busy: []) == at(8, day: 6))
+    }
+}

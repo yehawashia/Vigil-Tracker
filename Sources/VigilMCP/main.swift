@@ -209,7 +209,9 @@ let tools: [[String: Any]] = [
           "title": ["type": "string", "description": "Required for add"] as JSON,
           "start": ["type": "string", "description": "Start time. Required for add"] as JSON,
           "end": ["type": "string", "description": "End time. Required for add"] as JSON,
-          "kind": ["type": "string", "enum": ["task", "block"], "description": "\"block\" turns blocking on during the item. Default task"] as JSON,
+          "kind": ["type": "string", "enum": ["task", "block", "todo"], "description": "\"block\" turns blocking on during the item; \"todo\" is an unscheduled task for the task panel (no start/end needed). To schedule a todo, update it with kind task/block and a start and end. Default task"] as JSON,
+          "estimate_minutes": ["type": "integer", "description": "For todos: how long it should take"] as JSON,
+          "focus": ["type": "boolean", "description": "For todos: block distractions when it gets scheduled"] as JSON,
           "notes": ["type": "string"] as JSON,
           "done": ["type": "boolean"] as JSON,
           "reason": ["type": "string", "description": "One sentence shown to the user when they approve or reject"] as JSON],
@@ -235,7 +237,8 @@ func parseTime(_ text: String?, field: String) throws -> Date? {
 
 func itemJSON(_ i: TimetableItem) -> JSON {
     ["id": i.id, "title": i.title, "notes": nn(i.notes), "start": ts(i.start), "end": ts(i.end),
-     "kind": i.kind.rawValue, "done": i.done, "minutes": Int(i.duration / 60)]
+     "kind": i.kind.rawValue, "done": i.done, "minutes": i.kind == .todo ? nn(i.estimate) : Int(i.duration / 60),
+     "focus": nn(i.wantsFocus)]
 }
 
 func revisionJSON(_ r: TimetableRevision) -> JSON {
@@ -410,6 +413,7 @@ func callTool(_ name: String, _ args: [String: Any]) throws -> ToolResult {
         guard to.timeIntervalSince(from) <= 92 * 86400 else { throw ToolError(message: "Ask for at most 92 days at a time") }
         return .json(["from": startDay, "to": endDay,
                       "items": st.timetable(from: from, to: to).map(itemJSON),
+                      "tasks": st.todos().map(itemJSON),
                       "awaiting_approval": st.pendingProposals().map(revisionJSON)])
 
     case "propose_timetable_change":
@@ -417,12 +421,18 @@ func callTool(_ name: String, _ args: [String: Any]) throws -> ToolResult {
         let reason = args.str("reason")
         switch op {
         case "add":
-            guard let title = args.str("title"), let start = try parseTime(args.str("start"), field: "start"),
-                  let end = try parseTime(args.str("end"), field: "end") else {
-                throw ToolError(message: "'add' needs title, start and end")
-            }
             let kind = TimetableItem.Kind(rawValue: args.str("kind") ?? "task") ?? .task
-            let item = TimetableItem(title: title, notes: args.str("notes"), start: start, end: end, kind: kind)
+            guard let title = args.str("title") else { throw ToolError(message: "'add' needs a title") }
+            let item: TimetableItem
+            if kind == .todo {
+                item = TimetableItem(title: title, notes: args.str("notes"), start: Date(), end: Date(), kind: .todo,
+                                     estimate: args.int("estimate_minutes").map { max(5, min(1440, $0)) }, wantsFocus: args.bool("focus"))
+            } else {
+                guard let start = try parseTime(args.str("start"), field: "start"), let end = try parseTime(args.str("end"), field: "end") else {
+                    throw ToolError(message: "'add' needs start and end (or kind \"todo\" for an unscheduled task)")
+                }
+                item = TimetableItem(title: title, notes: args.str("notes"), start: start, end: end, kind: kind)
+            }
             do {
                 let rev = try st.proposeTimetableChange(.create, item: item, note: reason)
                 return .json(["proposed": true, "revision": rev, "item": itemJSON(item),
@@ -442,6 +452,8 @@ func callTool(_ name: String, _ args: [String: Any]) throws -> ToolResult {
                     item.kind = kind
                 }
                 if let d = args.bool("done") { item.done = d }
+                if let m = args.int("estimate_minutes") { item.estimate = max(5, min(1440, m)) }
+                if let f = args.bool("focus") { item.wantsFocus = f }
             }
             do {
                 let rev = try st.proposeTimetableChange(op == "update" ? .update : .delete, item: item, note: reason)

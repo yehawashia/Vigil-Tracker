@@ -34,6 +34,8 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSCameraUsageDescription: Scan the pairing code shown by Vigil on your Mac. Nothing is recorded.
+        NSMicrophoneUsageDescription: Speak a task and Vigil adds it to your timetable. Audio is processed on this device and never stored or sent anywhere.
+        NSSpeechRecognitionUsageDescription: Vigil turns what you say into timetable items using on-device speech recognition only.
         NSLocalNetworkUsageDescription: Vigil syncs only with the Mac you pair it with, on your local network, encrypted. It never uses the internet.
         NSBonjourServices: [_vigil._tcp, _vigilpair._tcp]
         CFBundleURLTypes:

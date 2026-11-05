@@ -61,13 +61,15 @@ public struct HostSnapshot: Codable, Equatable {
     public var devices: [PairedDevice]
     public var blockedDomains: [String]
     public var focus: FocusSession?
+    /// Unscheduled tasks (optional so older hosts' snapshots still decode).
+    public var todos: [TimetableItem]?
 
     public init(hostID: String, hostName: String, generatedAt: Date, today: DaySummary, trends: TrendsData?,
                 timetable: [TimetableItem], proposals: [TimetableRevision], history: [TimetableRevision],
-                devices: [PairedDevice], blockedDomains: [String], focus: FocusSession?) {
+                devices: [PairedDevice], blockedDomains: [String], focus: FocusSession?, todos: [TimetableItem]? = nil) {
         self.hostID = hostID; self.hostName = hostName; self.generatedAt = generatedAt; self.today = today
         self.trends = trends; self.timetable = timetable; self.proposals = proposals; self.history = history
-        self.devices = devices; self.blockedDomains = blockedDomains; self.focus = focus
+        self.devices = devices; self.blockedDomains = blockedDomains; self.focus = focus; self.todos = todos
     }
 }
 
