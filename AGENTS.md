@@ -2,7 +2,7 @@
 
 This guide is for AI agents (Claude Code, Claude Desktop, Cursor and other MCP clients) that need to **install Vigil for a user**, **connect to it** or **work on its code**.
 
-Vigil is a macOS 13+ menu-bar app that tracks app, window and website usage locally, blocks distractions, and serves that data over MCP (stdio, JSON-RPC 2.0). It has no network access.
+Vigil is a macOS 13+ menu-bar app that tracks app, window and website usage locally, blocks distractions, and serves that data over MCP (stdio, JSON-RPC 2.0). It has no internet access; paired iPhones/iPads sync with it over the local network only (encrypted, per-device keys).
 
 ---
 
@@ -69,6 +69,10 @@ All dates accept `"today"`, `"yesterday"`, `"YYYY-MM-DD"` or `"-N"` (N days ago)
 | `add_to_blocklist` ✎ | `kind` (`domain`\|`app`), `pattern` | Adds to the blocklist |
 | `remove_from_blocklist` ✎ | `kind`, `pattern` | Removes from the blocklist. Refused during a locked session |
 | `set_daily_limit` ✎ | `kind`, `pattern`, `minutes` (0 removes it) | Sets a per-day cap. During a locked session it can only be lowered |
+| `get_timetable` | `start_date?`, `end_date?` | Tasks and time blocks, plus changes awaiting the user's approval |
+| `propose_timetable_change` ✎ | `op` (`add`\|`update`\|`delete`), `id?`, `title?`, `start?`, `end?`, `kind?` (`task`\|`block`), `notes?`, `done?`, `reason?` | A **proposal**: nothing changes until the user approves it in Vigil (Mac, iPhone or iPad) |
+| `get_timetable_history` | `item_id?`, `limit?` | Every change: who made it (user, agent, device) and its status |
+| `get_devices` | none | Paired iPhones/iPads, last seen, and today's reported time |
 | `set_category` ✎ | `kind`, `pattern`, `category` (`productive`\|`neutral`\|`distracting`) | Recategorises a site or app and rescores the last 30 days |
 
 ✎ = changes something. These tools are hidden in read-only mode.
@@ -91,14 +95,16 @@ printf '%s\n' \
 
 ## 4. Working on the code
 
-- `swift build` gives a fast compile check. `./build.sh` builds a signed `build/Vigil.app`. `./build.sh --install` reinstalls it. `./build.sh --screenshots` regenerates `docs/screenshots` from sample data.
+- `swift build` gives a fast compile check. `./test.sh` runs the tests (timetable rules, pairing crypto, real TLS-PSK handshakes, full pair/sync/revoke). `./build.sh` builds a signed `build/Vigil.app`. `./build.sh --install` reinstalls it. `./build.sh --screenshots` regenerates `docs/screenshots` from sample data.
 - Layout:
   - `Sources/VigilCore` (SQLite store, categoriser, reports; shared)
   - `Sources/Vigil` (app: `AppModel` tick loop, `ActivityTracker`, `BrowserBridge`, `Blocker`, `TabCensus` (open/background tabs, memory only), `FocusDial`, SwiftUI views)
   - `Sources/VigilMCP/main.swift` (MCP server)
+  - `Sources/VigilSync` (pairing + local sync; shared with iOS), `Sources/VigilMobile` (iPhone/iPad screens), `iOS/` (iOS shell, see iOS/README.md)
 - Rules:
   - Keep Swift 5 language mode and macOS 13 as the minimum.
-  - **Never add network code.**
+  - **No internet code.** Local-network sync lives only in `Sources/VigilSync` (see docs/ARCHITECTURE.md §4).
+  - Agents only propose timetable changes; the user approves them.
   - Keep SQL parameterised.
   - Run URLs through `Categorizer.sanitize` before storing them.
   - Keep file permissions at 0700/0600.

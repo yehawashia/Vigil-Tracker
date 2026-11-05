@@ -4,6 +4,12 @@ import PackageDescription
 let package = Package(
     name: "Vigil",
     platforms: [.macOS(.v13), .iOS(.v16)],
+    products: [
+        // Used by the iPhone/iPad app in iOS/ (Xcode project generated from iOS/project.yml).
+        .library(name: "VigilMobile", targets: ["VigilMobile"]),
+        .executable(name: "Vigil", targets: ["Vigil"]),
+        .executable(name: "VigilMCP", targets: ["VigilMCP"]),
+    ],
     targets: [
         // Shared storage, categorisation and reporting. Used by both the app and the MCP server.
         .target(
@@ -16,6 +22,13 @@ let package = Package(
             name: "VigilSync",
             dependencies: ["VigilCore"],
             path: "Sources/VigilSync"
+        ),
+        // The iPhone/iPad app's screens and sync engine. Platform-neutral so it type-checks on macOS too;
+        // the iOS-only shell (camera, Screen Time, Safari extension) lives in iOS/.
+        .target(
+            name: "VigilMobile",
+            dependencies: ["VigilCore", "VigilSync"],
+            path: "Sources/VigilMobile"
         ),
         // The menu-bar app: tracking, blocking, dashboard, daily reports, pairing host.
         .executableTarget(

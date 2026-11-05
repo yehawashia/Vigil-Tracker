@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "Vigil",
+  "description": "Measures time per website in Safari for Vigil. Only the site's domain is recorded, and it stays on your devices.",
+  "version": "1.0",
+  "icons": { "128": "icon-128.png" },
+  "background": { "scripts": ["background.js"], "type": "module", "persistent": false },
+  "permissions": ["tabs", "nativeMessaging", "alarms", "storage"]
+}

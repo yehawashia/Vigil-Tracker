@@ -24,6 +24,9 @@
 
 - **Tracks** which app, window and website you're using, and for how long. Idle time doesn't count.
 - **Scores** your day from 0 to 100, based on productive, neutral and distracting time.
+- **Trends and predictions**: where today will likely finish, the next 7 days with an uncertainty band, your daily rhythm, a 90-day barcode, and an interactive 3D "time terrain". Hover any chart for exact numbers.
+- **Timetable**: plan your week; time blocks switch blocking on. Your AI agent can suggest changes, which wait for your approval, and every change is kept in a history you can undo.
+- **iPhone and iPad**: pair by QR code or PIN, see everything from your Mac, plan, focus and (with Screen Time) block on the go. Local network only, encrypted, per-device keys. See [iOS/README.md](iOS/README.md).
 - **Focus dial**: drag around the dial (or use the arrow keys) to pick how long to block distractions, then press Start. It's in the menu bar and on the Focus page, and counts down while you work.
 - **Sees every tab**: knows which tabs are open in each browser, which are in the background, and which are distracting. Close the distracting ones in one click.
 - **Day and Night mode**: light, dark, match macOS, or switch automatically by time of day. The sun/moon button in the menu bar flips it instantly.
@@ -67,6 +70,8 @@ Things to ask:
 | Menu bar | Focus session |
 |---|---|
 | <img src="docs/screenshots/menu-dark.png" width="300" alt="Menu bar popover with score and focus countdown"> | <img src="docs/screenshots/focus-dark.png" alt="Locked focus session with countdown and schedules"> |
+| **Trends** | **Timetable** |
+| <img src="docs/screenshots/trends-dark.png" alt="Trends: forecasts, 3D time terrain, barcode and rhythm charts"> | <img src="docs/screenshots/timetable-dark.png" alt="Week timetable with an agent suggestion awaiting approval"> |
 | **History** | **Blocking** |
 | <img src="docs/screenshots/history-dark.png" alt="Daily time and score over the last week"> | <img src="docs/screenshots/blocking-dark.png" alt="Blocklist and daily limits"> |
 
@@ -74,7 +79,7 @@ Things to ask:
 
 ## Privacy
 
-- **Nothing leaves your Mac.** Vigil has no internet code: no accounts, no analytics, no cloud.
+- **Nothing leaves your devices.** Vigil has no internet code: no accounts, no analytics, no cloud. Paired iPhones/iPads talk to your Mac over your local network only, encrypted.
 - Your data is in one file only you can read: `~/Library/Application Support/Vigil/vigil.sqlite`.
 - Web addresses are saved without search terms or tokens, and old data is deleted after 180 days. You can change both in Settings.
 - Agents can be set to **read-only**, and can never end a locked focus session.

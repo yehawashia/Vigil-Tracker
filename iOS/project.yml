@@ -1,0 +1,91 @@
+# Full build (paid Apple Developer account): adds Screen Time blocking, app-group time and the
+# Safari extension. Request the Family Controls (Development) capability for your team first.
+#   xcodegen && open Vigil.xcodeproj
+name: Vigil
+options:
+  bundleIdPrefix: com.CHANGE-ME.vigil       # must be unique to you; also change the App Group below
+  deploymentTarget: { iOS: "16.0" }
+packages:
+  VigilKit: { path: .. }
+settings:
+  base:
+    SWIFT_VERSION: "5"
+    SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) VIGIL_SCREEN_TIME"
+targets:
+  Vigil:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: ["**/*.md"]
+    dependencies:
+      - package: VigilKit
+        product: VigilMobile
+      - target: VigilMonitor
+      - target: VigilSafari
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"
+        PRODUCT_BUNDLE_IDENTIFIER: ${bundleIdPrefix}.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Vigil
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSCameraUsageDescription: Scan the pairing code shown by Vigil on your Mac. Nothing is recorded.
+        NSLocalNetworkUsageDescription: Vigil syncs only with the Mac you pair it with, on your local network, encrypted. It never uses the internet.
+        NSBonjourServices: [_vigil._tcp, _vigilpair._tcp]
+    entitlements:
+      path: App/Vigil.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.dev.vigil.mobile]
+
+  VigilMonitor:
+    type: app-extension
+    platform: iOS
+    sources: [Monitor]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${bundleIdPrefix}.app.monitor
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: Monitor/Info.plist
+      properties:
+        CFBundleDisplayName: Vigil Monitor
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).UsageMonitor
+    entitlements:
+      path: Monitor/VigilMonitor.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups: [group.dev.vigil.mobile]
+
+  VigilSafari:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SafariExtension/SafariWebExtensionHandler.swift
+      - path: SafariExtension/Resources
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ${bundleIdPrefix}.app.safari
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: SafariExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Vigil for Safari
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
+    entitlements:
+      path: SafariExtension/VigilSafari.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.vigil.mobile]

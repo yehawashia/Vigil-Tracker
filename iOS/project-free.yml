@@ -1,0 +1,37 @@
+# Free Apple ID ("Personal Team"): install on your own iPhone/iPad from Xcode. Re-run every 7 days.
+# Includes pairing, sync, Today/Trends/Plan/Focus. No Screen Time blocking, app groups or Safari
+# extension (those need capabilities Apple gives only to paid developer accounts).
+#   xcodegen --spec project-free.yml && open Vigil.xcodeproj
+name: Vigil
+options:
+  bundleIdPrefix: com.CHANGE-ME.vigil       # must be unique to you, e.g. com.yourname.vigil
+  deploymentTarget: { iOS: "16.0" }
+packages:
+  VigilKit: { path: .. }
+targets:
+  Vigil:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes: ["**/*.md"]
+    dependencies:
+      - package: VigilKit
+        product: VigilMobile
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "1,2"         # iPhone and iPad
+        PRODUCT_BUNDLE_IDENTIFIER: ${bundleIdPrefix}.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_VERSION: "5"
+        GENERATE_INFOPLIST_FILE: YES
+    info:
+      path: App/Info.plist
+      properties: &appInfo
+        CFBundleDisplayName: Vigil
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSCameraUsageDescription: Scan the pairing code shown by Vigil on your Mac. Nothing is recorded.
+        NSLocalNetworkUsageDescription: Vigil syncs only with the Mac you pair it with, on your local network, encrypted. It never uses the internet.
+        NSBonjourServices: [_vigil._tcp, _vigilpair._tcp]

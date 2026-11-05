@@ -6,3 +6,7 @@ build/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+iOS/*.xcodeproj/
+iOS/**/Info.plist
+iOS/**/*.entitlements
+xcuserdata/
