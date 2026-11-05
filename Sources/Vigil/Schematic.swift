@@ -9,12 +9,13 @@ struct SectionHeader: View {
     var number: String
     var title: String
     var note: String? = nil
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(number).font(Theme.label(10)).foregroundStyle(Theme.accent)
             Rectangle().fill(Theme.hairline).frame(width: 18, height: 1).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
-            Text(title.uppercased()).font(Theme.label(10.5)).tracking(1.4)
+            Text(Theme.title(title, scheme)).font(Theme.label(10.5)).tracking(1.4)
             Spacer()
             if let note { Text("→ " + note.uppercased()).font(Theme.label(9.5)).foregroundStyle(.secondary) }
         }

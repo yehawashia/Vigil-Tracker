@@ -6,7 +6,7 @@ import UIKit
 import AppKit
 #endif
 
-/// Same Day (paper) / Night (plum) tokens as the Mac app, for iPhone and iPad.
+/// Same Day (paper) / Night (black + orange HUD) tokens as the Mac app, for iPhone and iPad.
 public enum MTheme {
     static func dynamic(_ day: UInt32, _ night: UInt32, dayAlpha: CGFloat = 1, nightAlpha: CGFloat = 1) -> Color {
         func rgb(_ h: UInt32, _ a: CGFloat) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
@@ -26,16 +26,16 @@ public enum MTheme {
         #endif
     }
 
-    public static let paper = dynamic(0xEEECE8, 0x1E1620)
-    public static let card = dynamic(0xF7F6F3, 0x281E2B)
-    public static let ink = dynamic(0x161616, 0xE6DCEF)
-    public static let hairline = dynamic(0x161616, 0xC9B8D9, dayAlpha: 0.09, nightAlpha: 0.12)
-    public static let accent = dynamic(0xF26B2A, 0xF2B166)
-    public static let onAccent = dynamic(0xFFFFFF, 0x1E1620)
-    public static let productive = dynamic(0x1D1D1D, 0xF2B166)
-    public static let neutral = dynamic(0xA29D95, 0x8C7A9E)
-    public static let distracting = dynamic(0xF26B2A, 0xE8735A)
-    public static let series2 = dynamic(0x8A867F, 0xB9A6CC)
+    public static let paper = dynamic(0xEEECE8, 0x000000)
+    public static let card = dynamic(0xF7F6F3, 0x0A0A0A)
+    public static let ink = dynamic(0x161616, 0xEDEDED)
+    public static let hairline = dynamic(0x161616, 0xFFFFFF, dayAlpha: 0.09, nightAlpha: 0.16)
+    public static let accent = dynamic(0xF26B2A, 0xFF6B1F)
+    public static let onAccent = dynamic(0xFFFFFF, 0x000000)
+    public static let productive = dynamic(0x1D1D1D, 0xF2F2F2)
+    public static let neutral = dynamic(0xA29D95, 0x6B6B6B)
+    public static let distracting = dynamic(0xF26B2A, 0xFF6B1F)
+    public static let series2 = dynamic(0x8A867F, 0x9C9C9C)
 
     public static func label(_ size: CGFloat = 10.5) -> Font { .system(size: size, weight: .medium, design: .monospaced) }
 
@@ -55,12 +55,14 @@ public struct MCard<Content: View>: View {
         self.number = number; self.title = title; self.note = note; self.content = content()
     }
 
+    @Environment(\.colorScheme) private var scheme
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let title {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     if let number { Text(number).font(MTheme.label(10)).foregroundStyle(MTheme.accent) }
-                    Text(title.uppercased()).font(MTheme.label(10.5)).tracking(1.2)
+                    Text(scheme == .dark ? title.uppercased().replacingOccurrences(of: " ", with: "_") : title.uppercased()).font(MTheme.label(10.5)).tracking(1.2)
                     Spacer()
                     if let note { Text("→ " + note.uppercased()).font(MTheme.label(9)).foregroundStyle(.secondary) }
                 }
@@ -69,8 +71,26 @@ public struct MCard<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(MTheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(MTheme.hairline))
+        .background(RoundedRectangle(cornerRadius: scheme == .dark ? 2 : 14, style: .continuous).fill(MTheme.card))
+        .overlay(RoundedRectangle(cornerRadius: scheme == .dark ? 2 : 14, style: .continuous).strokeBorder(MTheme.hairline))
+        .overlay { if scheme == .dark { MBrackets() } }
+    }
+}
+
+/// HUD corner brackets for the black Night look.
+struct MBrackets: View {
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height, l: CGFloat = 9
+            Path { p in
+                p.move(to: CGPoint(x: 0, y: l)); p.addLine(to: .zero); p.addLine(to: CGPoint(x: l, y: 0))
+                p.move(to: CGPoint(x: w - l, y: 0)); p.addLine(to: CGPoint(x: w, y: 0)); p.addLine(to: CGPoint(x: w, y: l))
+                p.move(to: CGPoint(x: 0, y: h - l)); p.addLine(to: CGPoint(x: 0, y: h)); p.addLine(to: CGPoint(x: l, y: h))
+                p.move(to: CGPoint(x: w - l, y: h)); p.addLine(to: CGPoint(x: w, y: h)); p.addLine(to: CGPoint(x: w, y: h - l))
+            }
+            .stroke(MTheme.ink.opacity(0.75), lineWidth: 1.5)
+        }
+        .allowsHitTesting(false)
     }
 }
 

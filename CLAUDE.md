@@ -8,12 +8,13 @@ See **AGENTS.md** for installing, MCP tools and the code layout. Short version:
 - Performance: the tick loop must not query SQLite in the common case. Use `pendingSessions`, `schedules` and the tracker's cached title and URL. Segment end times are flushed every 5 s.
 - Security:
   - No internet code, ever. The only networking is `Sources/VigilSync`: local network only (no cellular, non-local addresses refused), paired devices only, TLS-PSK with a per-device key. Change it only with tests in `Tests/`.
+  - The live agent server (MCP over HTTP) binds to 127.0.0.1 only, needs a per-agent bearer token, and rejects requests with a browser `Origin` header. Never bind it to other interfaces.
   - Keep SQL parameterised.
   - Keep folders 0700 and database files 0600.
   - Sanitise URLs with `Categorizer.sanitize` before storing them.
   - Keep hardened-runtime signing in `build.sh`.
 - Locked focus sessions must never be weakened, whether from the UI, over MCP or from a paired device.
-- Agents only *propose* timetable changes (`status = 'proposed'`); never let MCP write timetable items directly.
+- Agent timetable/task changes are proposals (`status = 'proposed'`) unless the user has marked that specific agent as trusted (per-agent switch, off by default). Every change, trusted or not, goes through the append-only revision history.
 - Timetable history is append-only. Revert by adding a revision, never by editing or deleting old ones.
 - Swift 5 / macOS 13 / iOS 16. `Sources/VigilMobile` must keep compiling on macOS (guard UIKit with `#if canImport(UIKit)`).
 - Architecture and security design: docs/ARCHITECTURE.md.

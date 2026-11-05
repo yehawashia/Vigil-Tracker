@@ -26,6 +26,7 @@ struct DashboardView: View {
                 }
             }
             .listStyle(.sidebar)
+            .modifier(HUDSidebar())
             .safeAreaInset(edge: .bottom) { sidebarFooter }
             .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } detail: {
@@ -213,8 +214,7 @@ struct TodayView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardBackground))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+            .panel(radius: 12)
 
             StatTile(label: "Active", value: DurationText.short(s.activeSeconds),
                      footnote: s.firstActivity.map { "since \($0.formatted(date: .omitted, time: .shortened))" })
@@ -405,5 +405,17 @@ struct OpenTabsCard: View {
                 .help("Close this tab")
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Night mode: a black sidebar to match the HUD (Day keeps the system sidebar).
+private struct HUDSidebar: ViewModifier {
+    @Environment(\.colorScheme) private var scheme
+    func body(content: Content) -> some View {
+        if scheme == .dark {
+            content.scrollContentBackground(.hidden).background(Color.black)
+        } else {
+            content
+        }
     }
 }

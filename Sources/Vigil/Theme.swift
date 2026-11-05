@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 import VigilCore
 
 /// Two looks, chosen by Day/Night mode (see docs/ARCHITECTURE.md §7):
-/// Day = warm paper, black ink, one signal-orange accent. Night = deep plum grid, amber and coral light.
+/// Day = warm paper, black ink, one signal-orange accent. Night = black HUD: white ink, one orange accent.
 enum Theme {
     /// A colour that resolves per appearance, so every view follows Day/Night switches instantly.
     static func dynamic(day: UInt32, night: UInt32, nightAlpha: CGFloat = 1, dayAlpha: CGFloat = 1) -> Color {
@@ -14,20 +14,20 @@ enum Theme {
         })
     }
 
-    static let paper = dynamic(day: 0xEEECE8, night: 0x1E1620)
-    static let cardBackground = dynamic(day: 0xF7F6F3, night: 0x281E2B)
-    static let ink = dynamic(day: 0x161616, night: 0xE6DCEF)
-    static let grid = dynamic(day: 0x161616, night: 0xB49CC8, nightAlpha: 0.07, dayAlpha: 0.06)
-    static let hairline = dynamic(day: 0x161616, night: 0xC9B8D9, nightAlpha: 0.12, dayAlpha: 0.09)
+    static let paper = dynamic(day: 0xEEECE8, night: 0x000000)
+    static let cardBackground = dynamic(day: 0xF7F6F3, night: 0x0A0A0A)
+    static let ink = dynamic(day: 0x161616, night: 0xEDEDED)
+    static let grid = dynamic(day: 0x161616, night: 0xFFFFFF, nightAlpha: 0.06, dayAlpha: 0.06)
+    static let hairline = dynamic(day: 0x161616, night: 0xFFFFFF, nightAlpha: 0.16, dayAlpha: 0.09)
 
-    static let accent = dynamic(day: 0xF26B2A, night: 0xF2B166)
+    static let accent = dynamic(day: 0xF26B2A, night: 0xFF6B1F)
     /// Text drawn on top of the accent colour.
-    static let onAccent = dynamic(day: 0xFFFFFF, night: 0x1E1620)
-    static let productive = dynamic(day: 0x1D1D1D, night: 0xF2B166)
-    static let neutral = dynamic(day: 0xA29D95, night: 0x8C7A9E)
-    static let distracting = dynamic(day: 0xF26B2A, night: 0xE8735A)
+    static let onAccent = dynamic(day: 0xFFFFFF, night: 0x000000)
+    static let productive = dynamic(day: 0x1D1D1D, night: 0xF2F2F2)
+    static let neutral = dynamic(day: 0xA29D95, night: 0x6B6B6B)
+    static let distracting = dynamic(day: 0xF26B2A, night: 0xFF6B1F)
     /// Secondary chart series (e.g. "last week", forecast bands).
-    static let series2 = dynamic(day: 0x8A867F, night: 0xB9A6CC)
+    static let series2 = dynamic(day: 0x8A867F, night: 0x9C9C9C)
 
     /// Small technical labels: monospaced, tracked, upper-case.
     static func label(_ size: CGFloat = 10.5) -> Font { .system(size: size, weight: .medium, design: .monospaced) }
@@ -49,13 +49,22 @@ struct PaperBackground: View {
             Theme.paper
             if scheme == .dark {
                 Canvas { ctx, size in
-                    var path = Path()
-                    let step: CGFloat = 32
-                    var x: CGFloat = 0
-                    while x <= size.width { path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: size.height)); x += step }
-                    var y: CGFloat = 0
-                    while y <= size.height { path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y)); y += step }
-                    ctx.stroke(path, with: .color(Theme.grid), lineWidth: 0.5)
+                    // Dotted measuring grid: a dot every 24 pt, a brighter one every 96 pt.
+                    let step: CGFloat = 24
+                    var y: CGFloat = step
+                    var row = 1
+                    while y < size.height {
+                        var x: CGFloat = step
+                        var col = 1
+                        while x < size.width {
+                            let major = row % 4 == 0 && col % 4 == 0
+                            let r: CGFloat = major ? 1.1 : 0.6
+                            ctx.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                                     with: .color(Theme.grid.opacity(major ? 3 : 1.6)))
+                            x += step; col += 1
+                        }
+                        y += step; row += 1
+                    }
                 }
                 .drawingGroup()
             }
@@ -93,12 +102,14 @@ struct Card<Content: View>: View {
         self.content = content()
     }
 
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if title != nil || trailing != nil {
                 HStack {
                     if let title {
-                        Text(title.uppercased())
+                        Text(Theme.title(title, scheme))
                             .font(Theme.label(11))
                             .tracking(1.2)
                             .foregroundStyle(.secondary)
@@ -111,9 +122,57 @@ struct Card<Content: View>: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.cardBackground))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.hairline))
+        .panel()
     }
+}
+
+extension Theme {
+    /// Card titles: "TOP APPS" on paper, "TOP_APPS" on the black HUD.
+    static func title(_ text: String, _ scheme: ColorScheme) -> String {
+        let up = text.uppercased()
+        return scheme == .dark ? up.replacingOccurrences(of: " ", with: "_") : up
+    }
+}
+
+/// Panel chrome. Day: soft paper card. Night: HUD frame (near-square, 1 px, corner brackets).
+struct PanelFrame: ViewModifier {
+    var radius: CGFloat = 14
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        if scheme == .dark {
+            content
+                .background(Rectangle().fill(Theme.cardBackground))
+                .overlay(Rectangle().strokeBorder(Theme.hairline, lineWidth: 1))
+                .overlay(HUDBrackets())
+        } else {
+            content
+                .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Theme.cardBackground))
+                .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Theme.hairline))
+        }
+    }
+}
+
+/// Short L-shaped marks on each corner, drawn over the frame (HUD style).
+struct HUDBrackets: View {
+    var length: CGFloat = 9
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height, l = length
+            Path { p in
+                p.move(to: CGPoint(x: 0, y: l)); p.addLine(to: .zero); p.addLine(to: CGPoint(x: l, y: 0))
+                p.move(to: CGPoint(x: w - l, y: 0)); p.addLine(to: CGPoint(x: w, y: 0)); p.addLine(to: CGPoint(x: w, y: l))
+                p.move(to: CGPoint(x: 0, y: h - l)); p.addLine(to: CGPoint(x: 0, y: h)); p.addLine(to: CGPoint(x: l, y: h))
+                p.move(to: CGPoint(x: w - l, y: h)); p.addLine(to: CGPoint(x: w, y: h)); p.addLine(to: CGPoint(x: w, y: h - l))
+            }
+            .stroke(Theme.ink.opacity(0.75), lineWidth: 1.5)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+extension View {
+    func panel(radius: CGFloat = 14) -> some View { modifier(PanelFrame(radius: radius)) }
 }
 
 struct StatTile: View {
@@ -121,23 +180,23 @@ struct StatTile: View {
     var value: String
     var tint: Color = .primary
     var footnote: String?
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label.uppercased())
+            Text(Theme.title(label, scheme))
                 .font(Theme.label(10.5))
                 .tracking(1)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 24, weight: .semibold, design: .rounded))
+                .font(.system(size: 28, weight: .light))
                 .monospacedDigit()
                 .foregroundStyle(tint)
             Text(footnote ?? " ").font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.cardBackground))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline))
+        .panel(radius: 12)
     }
 }
 
